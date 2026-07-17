@@ -1,11 +1,12 @@
-import type { User } from "../types";
+import type { User } from "../types/index.js";
+import { Role } from "../types/index.js";
 
 function getUser(id: number): User {
     return {
         id,
         name: "Juan dela Cruz",
         email: "juan@example.com",
-        role: "student",
+        role: Role.Student,
         isActive: true,
         score: 95.5,
     };
@@ -28,8 +29,8 @@ function formatCourse(
     return `${name} (${units} units) - ${semester}`;
 }
 
-const user: User = getUser(1);
+export const student: User = getUser(1);
 
-console.log(user);
+console.log(student);
 console.log(calculateGrade(85, 100));
 console.log(formatCourse("IT Elective 4", 3, "1st Semester"));
