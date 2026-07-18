@@ -1,21 +1,30 @@
 # Badminton Court Booking System
 
-This project models a simple badminton court booking system for admins and players. It uses TypeScript interfaces, enums, generics, and utility types to define core entities such as users, courts, bookings, announcements, and API responses.
+This project models a simple badminton court booking system for admins and players. It uses TypeScript interfaces, enums, generics, and utility types to define core entities such as users, courts, bookings, and API responses.
 
-## Types defined so far
+## Types defined
 - User
-- Course
-- Submission
 - Court
 - Booking
-- Announcement
 - ApiResponse<T>
-- UserRole (enum)
+- UserUpdate
+- PublicUser
+- UserRole (type union)
 - BookingStatus (enum)
 
-## Install and run
+## Install dependencies
 ```bash
 npm install
+```
+
+## Run the app
+Use either of the following commands:
+
+```bash
+npm start
+```
+or
+```bash
 npx ts-node src/index.ts
 ```
 
@@ -24,3 +33,4 @@ npx ts-node src/index.ts
 npm run check
 ```
 
+Make sure Node.js and npm are installed before running the project.

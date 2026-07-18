@@ -2,19 +2,19 @@
   "name": "itelect4-project-arriola",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/index.ts",
   "scripts": {
-    "start": "npx ts-node src/index.ts",
-    "check": "tsc --noEmit",
-    "sample": "npx ts-node src/sample.ts"
+  "start": "tsx src/index.ts",
+  "check": "tsc --noEmit",
+  "sample": "tsx src/sample.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "devDependencies": {
-    "@types/node": "^26.1.0",
+    "@types/node": "^20.0.0",
     "ts-node": "^10.9.2",
-    "typescript": "^6.0.3"
+    "tsx": "^4.23.1",
+    "typescript": "^5.4.0"
   }
 }

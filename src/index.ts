@@ -1,4 +1,4 @@
-import {User, Court, Booking, BookingStatus, ApiResponse,UserUpdate, PublicUser,} from "../types";
+import {User, Court, Booking, BookingStatus, ApiResponse, UserUpdate, PublicUser,} from "../types/index.ts";
 
 export function createUser(id: number): User {
   return {
