@@ -1,47 +1,44 @@
-export enum Role {
-    Student = "student",
-    Instructor = "instructor",
-    Admin = "admin",
+export type UserRole = "player" | "admin";
+
+//Regular enum
+export enum BookingStatus {
+  Pending = "pending",
+  Approved = "approved",
+  Completed = "completed",
 }
 
+//INTERFACES
 export interface User {
-    id: number;
-    name: string;
-    email: string;
-    role: Role;
-    isActive: boolean;
-    score: number;
+  id: number;
+  name: string;
+  email: string;
+  role: UserRole;
+  isActive: boolean;
 }
 
-export interface Course {
-    id: number;
-    name: string;
-    units: number;
-    semester: string;
+export interface Court {
+  id: number;
+  name: string;
+  location: string;
+  isAvailable: boolean;
 }
 
-export interface Submission {
-    id: number;
-    studentId: number;
-    courseId: number;
-    submittedAt: string;
-    score: number;
-    grade: string;
+export interface Booking {
+  id: number;
+  userId: number;
+  courtId: number;
+  bookingDate: Date;
+  durationHours: number;
+  status: BookingStatus;
 }
 
-export interface Grade {
-    score: number;
-    maxScore: number;
-    letterGrade: string;
-}
-
+//GENERIC INTERFACE
 export interface ApiResponse<T> {
-    success: boolean;
-    message: string;
-    data: T;
+  success: boolean;
+  data: T;
+  message?: string;
 }
 
+//UTILITY TYPES
 export type UserUpdate = Partial<User>;
-export type CourseSummary = Pick<Course, "id" | "name">;
-export type SubmissionRecord = Record<number, Submission>;
-export type ApiResult<T> = Omit<ApiResponse<T>, "message">;
+export type PublicUser = Omit<User, "email" | "isActive">;
