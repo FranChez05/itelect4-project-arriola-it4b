@@ -1,21 +1,4 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "CommonJS",
-    "moduleResolution": "Node",
-
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": false,
-
-    "types": ["node"]
-  },
-  "ts-node": {
-    "compilerOptions": {
-      "module": "CommonJS"
-    }
-  }
+  "extends": "./tsconfig.app.json",
+  "include": ["src"]
 }
