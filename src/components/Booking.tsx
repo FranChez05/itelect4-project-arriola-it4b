@@ -2,7 +2,7 @@ import type * as React from 'react'
 import type { Booking as BookingType } from '../types'
 
 interface BookingProps {
-  booking: BookingType
+  booking: BookingType | null
   userName: string
   courtName: string
   onConfirm: (bookingId: number) => void
@@ -18,7 +18,17 @@ const Booking: React.FC<BookingProps> = ({
 }) => {
   const handleConfirm = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault()
-    onConfirm(booking.id)
+    if (booking) {
+      onConfirm(booking.id)
+    }
+  }
+
+  if (!booking) {
+    return (
+      <article className="card booking-card">
+        <h2>No Booking Selected</h2>
+      </article>
+    )
   }
 
   return (
