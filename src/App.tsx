@@ -2,32 +2,34 @@ import { useEffect, useRef, useState } from 'react'
 import UserComponent from './components/User'
 import BookingComponent from './components/Booking'
 import CourtComponent from './components/Court'
+import usePrevious from './hooks/usePrevious'
+import useToggle from './hooks/useToggle'
 import { BookingStatus } from './types'
 import type { Booking, Court, User } from './types'
 import './App.css'
 
-const mockUser: User = {
+const createMockUser = (): User => ({
   id: 1,
   name: 'Ana Arriola',
   email: 'arriolaana@gmail.com',
   role: 'player',
   isActive: true,
-}
+})
 
-const mockCourts: Court[] = [
+const createMockCourts = (): Court[] => [
   { id: 1, name: 'Court A', location: 'Main Gym', isAvailable: true },
   { id: 2, name: 'Court B', location: 'Main Gym', isAvailable: true },
   { id: 3, name: 'Court C', location: 'Main Gym', isAvailable: false },
 ]
 
-const mockBooking: Booking = {
+const createMockBooking = (courtId: number, userId: number): Booking => ({
   id: 1,
-  userId: mockUser.id,
-  courtId: mockCourts[0].id,
+  userId,
+  courtId,
   bookingDate: new Date(),
   durationHours: 2,
   status: BookingStatus.Pending,
-}
+})
 
 function App() {
   // useRef DOM reference for an input element that can be focused
@@ -42,7 +44,11 @@ function App() {
   // Primitive states
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [statusMessage, setStatusMessage] = useState<string>('Initializing system...')
-  const [booking, setBooking] = useState<Booking>(mockBooking)
+  const [user, setUser] = useState<User | null>(null)
+  const [booking, setBooking] = useState<Booking | null>(null)
+  const [showBookingNote, toggleShowBookingNote] = useToggle(false)
+  const previousSearchQuery = usePrevious(searchQuery)
+  const previousSelectedCourt = usePrevious(selectedCourt)
 
   // useEffect to load mock data on component mount
   useEffect(() => {
@@ -50,13 +56,35 @@ function App() {
 
     // Simulate async data fetching on mount
     const timer = setTimeout(() => {
-      setCourtsList(mockCourts)
-      setSelectedCourt(mockCourts[0])
+      const loadedUser = createMockUser()
+      const loadedCourts = createMockCourts()
+      const loadedBooking = createMockBooking(loadedCourts[0].id, loadedUser.id)
+
+      setUser(loadedUser)
+      setCourtsList(loadedCourts)
+      setSelectedCourt(loadedCourts[0])
+      setBooking(loadedBooking)
       setStatusMessage('Mock data loaded successfully!')
     }, 600)
 
     return () => clearTimeout(timer)
   }, [])
+
+  useEffect(() => {
+    if (previousSelectedCourt && selectedCourt && previousSelectedCourt.id !== selectedCourt.id) {
+      setStatusMessage(`Selected court changed from ${previousSelectedCourt.name} to ${selectedCourt.name}`)
+    }
+  }, [selectedCourt, previousSelectedCourt])
+
+  useEffect(() => {
+    if (previousSearchQuery !== undefined && previousSearchQuery !== searchQuery) {
+      setStatusMessage(
+        searchQuery.trim()
+          ? `Search updated from "${previousSearchQuery}" to "${searchQuery}"`
+          : 'Search cleared'
+      )
+    }
+  }, [searchQuery, previousSearchQuery])
 
   // Explicitly typed onChange handler using React.ChangeEvent<HTMLInputElement>
   const handleSearchInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -92,11 +120,15 @@ function App() {
       return
     }
 
-    setBooking((current) => ({
-      ...current,
-      courtId: selectedCourt.id,
-      status: BookingStatus.Approved,
-    }))
+    setBooking((current) => {
+      const previousBooking = current ?? createMockBooking(selectedCourt.id, user?.id ?? 1)
+
+      return {
+        ...previousBooking,
+        courtId: selectedCourt.id,
+        status: BookingStatus.Approved,
+      }
+    })
 
     setStatusMessage(`Booking ${bookingId} confirmed for ${selectedCourt.name}`)
   }
@@ -125,21 +157,25 @@ function App() {
       </header>
 
       <section className="cards-grid">
-        <UserComponent user={mockUser} />
+        <UserComponent user={user} isLoading={user === null} />
         <CourtComponent
           court={selectedCourt}
           courts={filteredCourts}
           selectedDate={new Date().toISOString().slice(0, 10)}
           onCourtChange={handleSelectCourt}
           onDateChange={() => { }}
+          isLoading={courtsList.length === 0}
         />
         <BookingComponent
           booking={booking}
-          userName={mockUser.name}
+          userName={user?.name ?? 'Unknown User'}
           courtName={selectedCourt?.name ?? 'None'}
           onConfirm={handleConfirmBooking}
         >
-          <p>Booked for {mockUser.name}</p>
+          <button type="button" onClick={toggleShowBookingNote}>
+            {showBookingNote ? 'Hide booking note' : 'Show booking note'}
+          </button>
+          {showBookingNote && <p>Booked for {user?.name ?? 'Unknown User'}</p>}
         </BookingComponent>
       </section>
 
