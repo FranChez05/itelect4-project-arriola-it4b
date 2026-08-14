@@ -11,6 +11,38 @@ interface CourtProps {
   isLoading?: boolean
 }
 
+function CourtLoadingSpinner() {
+  return (
+    <div className="h-full flex flex-col justify-center items-center rounded-2xl border-2 border-blue-200/80 dark:border-slate-700 bg-white dark:bg-slate-800 p-8 shadow-xl text-center min-h-[300px] space-y-4 animate-pulse">
+      <div className="relative flex items-center justify-center">
+        <div className="h-16 w-16 rounded-full border-4 border-[#0876D1]/20 border-t-[#0876D1] animate-spin" />
+        <span className="absolute text-xl">🏸</span>
+      </div>
+      <div className="space-y-1">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-[#EAF6EC] dark:bg-slate-700 px-3 py-1 text-xs font-black text-[#078A63] dark:text-emerald-300 uppercase tracking-widest border border-[#078A63]/30">
+          <span className="h-2 w-2 rounded-full bg-[#078A63] animate-ping" />
+          LOADING COURTS
+        </span>
+        <p className="text-xs font-bold text-slate-500 dark:text-slate-400 pt-1">Fetching badminton court schedules & specs...</p>
+      </div>
+    </div>
+  )
+}
+
+function CourtEmptyState() {
+  return (
+    <div className="rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-8 text-center space-y-4 shadow-sm">
+      <div className="text-4xl">🏸</div>
+      <div className="space-y-1">
+        <h3 className="text-lg font-black text-[#064A8C] dark:text-blue-300 uppercase">No Courts Available</h3>
+        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+          No courts match your search filter criteria. Try clearing your search parameters.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 export default function Court({
   court,
   courts,
@@ -19,7 +51,6 @@ export default function Court({
   onDateChange,
   isLoading = false,
 }: CourtProps) {
-  // DOM reference using useRef to target the date input element directly
   const dateInputRef = useRef<HTMLInputElement>(null)
 
   const handleCourtChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
@@ -31,44 +62,15 @@ export default function Court({
   }
 
   const handleFocusDateInput = () => {
-    // Focus the date input DOM element
     dateInputRef.current?.focus()
   }
 
   if (isLoading) {
-    return (
-      <article className="h-full flex flex-col justify-center items-center rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-md text-center transition-colors duration-300 min-h-[320px]">
-        <div className="relative mb-3">
-          <svg className="animate-spin h-9 w-9 text-[#0876D1] dark:text-blue-400" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-        </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 dark:bg-slate-700 px-3 py-0.5 text-xs font-extrabold text-[#0876D1] dark:text-blue-300 uppercase tracking-wider mb-1">
-          Loading Courts
-        </span>
-        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Fetching court availability & schedules...</p>
-      </article>
-    )
+    return <CourtLoadingSpinner />
   }
 
   if (courts.length === 0) {
-    return (
-      <article className="h-full flex flex-col justify-center items-center rounded-2xl border border-amber-300 dark:border-amber-700 bg-amber-50/60 dark:bg-slate-800 p-6 shadow-md text-center transition-colors duration-300 min-h-[320px]">
-        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 shadow-sm border border-amber-300">
-          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-        </div>
-        <span className="inline-flex items-center gap-1 rounded-md bg-amber-200/80 dark:bg-amber-900/60 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-amber-900 dark:text-amber-300 mb-1.5">
-          No Matches Found
-        </span>
-        <h3 className="text-base font-black text-amber-950 dark:text-amber-200">No Courts Available</h3>
-        <p className="mt-1 text-xs font-semibold text-amber-800/80 dark:text-amber-300/80 max-w-xs">
-          No court matches your current search criteria. Try clearing your search query.
-        </p>
-      </article>
-    )
+    return <CourtEmptyState />
   }
 
   return (

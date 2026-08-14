@@ -1,3 +1,4 @@
+import React from 'react'
 import type { User as UserType } from '../types'
 
 interface UserProps {
@@ -6,40 +7,54 @@ interface UserProps {
   compact?: boolean
 }
 
+function UserLoadingSpinner() {
+  return (
+    <div className="h-full flex flex-col justify-center items-center rounded-2xl border-2 border-blue-200/80 dark:border-slate-700 bg-white dark:bg-slate-800 p-8 shadow-xl text-center min-h-[300px] space-y-4 animate-pulse">
+      <div className="relative flex items-center justify-center">
+        <div className="h-16 w-16 rounded-full border-4 border-[#0876D1]/20 border-t-[#0876D1] animate-spin" />
+        <span className="absolute text-xl">🏸</span>
+      </div>
+      <div className="space-y-1">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-[#EAF6EC] dark:bg-slate-700 px-3 py-1 text-xs font-black text-[#078A63] dark:text-emerald-300 uppercase tracking-widest border border-[#078A63]/30">
+          <span className="h-2 w-2 rounded-full bg-[#078A63] animate-ping" />
+          LOADING PROFILE
+        </span>
+        <p className="text-xs font-bold text-slate-500 dark:text-slate-400 pt-1">Fetching player credentials & pass details...</p>
+      </div>
+    </div>
+  )
+}
+
+function UserErrorAlert({ title, message }: { title: string; message: string }) {
+  return (
+    <div className="rounded-2xl border-2 border-rose-300 dark:border-rose-800 bg-rose-50/70 dark:bg-slate-800 p-6 shadow-xl text-center space-y-4">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-300 shadow-sm border border-rose-300">
+        <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+      </div>
+      <div className="space-y-1">
+        <span className="inline-block rounded-md bg-rose-200/80 dark:bg-rose-900/60 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-rose-900 dark:text-rose-300">
+          ⚠️ Action Required
+        </span>
+        <h3 className="text-base font-black text-rose-950 dark:text-rose-200 uppercase pt-1">{title}</h3>
+        <p className="text-xs font-bold text-rose-800/90 dark:text-rose-300 max-w-sm mx-auto">{message}</p>
+      </div>
+    </div>
+  )
+}
+
 export default function User({ user, isLoading = false, compact = false }: UserProps) {
   if (isLoading) {
-    return (
-      <article className="h-full flex flex-col justify-center items-center rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-md text-center transition-colors duration-300 min-h-[320px]">
-        <div className="relative mb-3">
-          <svg className="animate-spin h-9 w-9 text-[#064A8C] dark:text-blue-400" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-        </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 dark:bg-slate-700 px-3 py-0.5 text-xs font-extrabold text-[#064A8C] dark:text-blue-300 uppercase tracking-wider mb-1">
-          Loading Profile
-        </span>
-        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Loading player credentials...</p>
-      </article>
-    )
+    return <UserLoadingSpinner />
   }
 
   if (!user) {
     return (
-      <article className="h-full flex flex-col justify-center items-center rounded-2xl border border-amber-300 dark:border-amber-700 bg-amber-50/60 dark:bg-slate-800 p-6 shadow-md text-center transition-colors duration-300 min-h-[320px]">
-        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 shadow-sm border border-amber-300">
-          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-          </svg>
-        </div>
-        <span className="inline-flex items-center gap-1 rounded-md bg-amber-200/80 dark:bg-amber-900/60 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-amber-900 dark:text-amber-300 mb-1.5">
-          Profile Unavailable
-        </span>
-        <h3 className="text-base font-black text-amber-950 dark:text-amber-200">No Player Loaded</h3>
-        <p className="mt-1 text-xs font-semibold text-amber-800/80 dark:text-amber-300/80 max-w-xs">
-          Unable to retrieve player profile. Please refresh or log in again.
-        </p>
-      </article>
+      <UserErrorAlert
+        title="No Player Profile Loaded"
+        message="Unable to retrieve active player pass. Please refresh or verify login status."
+      />
     )
   }
 
