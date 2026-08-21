@@ -6,7 +6,7 @@ import type {
   CreateUserInput,
 } from '../types'
 
-const BASE_URL = 'http://localhost:3001'
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -19,19 +19,38 @@ async function handleResponse<T>(response: Response): Promise<T> {
 export function parseBooking(apiBooking: ApiBooking): Booking {
   return {
     ...apiBooking,
+    id: Number(apiBooking.id),
+    userId: Number(apiBooking.userId),
+    courtId: Number(apiBooking.courtId),
     bookingDate: new Date(apiBooking.bookingDate),
+  }
+}
+
+export function parseCourt(court: Court): Court {
+  return {
+    ...court,
+    id: Number(court.id),
+  }
+}
+
+export function parseUser(user: User): User {
+  return {
+    ...user,
+    id: Number(user.id),
   }
 }
 
 // --- COURTS API ---
 export async function getCourts(): Promise<Court[]> {
   const res = await fetch(`${BASE_URL}/courts`)
-  return handleResponse<Court[]>(res)
+  const courts = await handleResponse<Court[]>(res)
+  return courts.map(parseCourt)
 }
 
 export async function getCourtById(id: number): Promise<Court> {
   const res = await fetch(`${BASE_URL}/courts/${id}`)
-  return handleResponse<Court>(res)
+  const court = await handleResponse<Court>(res)
+  return parseCourt(court)
 }
 
 export async function createCourt(input: CreateCourtInput): Promise<Court> {
@@ -40,7 +59,8 @@ export async function createCourt(input: CreateCourtInput): Promise<Court> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   })
-  return handleResponse<Court>(res)
+  const court = await handleResponse<Court>(res)
+  return parseCourt(court)
 }
 
 // --- BOOKINGS API ---
@@ -85,12 +105,14 @@ export async function deleteBooking(id: number): Promise<void> {
 // --- USERS API ---
 export async function getUsers(): Promise<User[]> {
   const res = await fetch(`${BASE_URL}/users`)
-  return handleResponse<User[]>(res)
+  const users = await handleResponse<User[]>(res)
+  return users.map(parseUser)
 }
 
 export async function getUserById(id: number): Promise<User> {
   const res = await fetch(`${BASE_URL}/users/${id}`)
-  return handleResponse<User>(res)
+  const user = await handleResponse<User>(res)
+  return parseUser(user)
 }
 
 export async function createUser(input: CreateUserInput): Promise<User> {
@@ -99,5 +121,6 @@ export async function createUser(input: CreateUserInput): Promise<User> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   })
-  return handleResponse<User>(res)
+  const user = await handleResponse<User>(res)
+  return parseUser(user)
 }
