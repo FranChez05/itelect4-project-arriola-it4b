@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { BookingStatus } from '../types'
 import type { Booking, Court, User } from '../types'
+import { getCourts, getBookings, getUsers } from '../api/client'
 
 export interface BookingStoreState {
   // Data State
@@ -27,41 +28,7 @@ export interface BookingStoreState {
   setStatusMessage: (msg: string) => void
 }
 
-const mockUser: User = {
-  id: 1,
-  name: 'Ana Arriola',
-  email: 'arriolaana@gmail.com',
-  role: 'player',
-  isActive: true,
-}
-
-const mockCourts: Court[] = [
-  { id: 1, name: 'Court A - Main Arena', location: 'Main Gym (Wood Floor)', isAvailable: true },
-  { id: 2, name: 'Court B - Side Arena', location: 'Main Gym (Rubber Floor)', isAvailable: true },
-  { id: 3, name: 'Court C - VIP Hall', location: 'VIP Complex (AC Room)', isAvailable: false },
-  { id: 4, name: 'Court D - Outdoor Arena', location: 'East Annex (Synthetics)', isAvailable: true },
-]
-
 const getTodayDateStr = () => new Date().toISOString().slice(0, 10)
-
-const mockBookings: Booking[] = [
-  {
-    id: 101,
-    userId: 1,
-    courtId: 1,
-    bookingDate: new Date(),
-    durationHours: 2,
-    status: BookingStatus.Approved,
-  },
-  {
-    id: 102,
-    userId: 1,
-    courtId: 2,
-    bookingDate: new Date(Date.now() + 86400000 * 2), // 2 days later
-    durationHours: 1,
-    status: BookingStatus.Pending,
-  },
-]
 
 export const useBookingStore = create<BookingStoreState>((set, get) => ({
   user: null,
@@ -74,17 +41,27 @@ export const useBookingStore = create<BookingStoreState>((set, get) => ({
   statusMessage: 'Loading facility resources...',
   isDarkMode: window.localStorage.getItem('badminton-theme') === 'dark',
 
-  fetchData: () => {
-    set({ isLoading: true, statusMessage: 'Fetching data from server...' })
-    setTimeout(() => {
+  fetchData: async () => {
+    set({ isLoading: true, statusMessage: 'Fetching data from API server...' })
+    try {
+      const [courtsData, bookingsData, usersData] = await Promise.all([
+        getCourts(),
+        getBookings(),
+        getUsers(),
+      ])
       set({
-        user: mockUser,
-        courts: mockCourts,
-        bookings: mockBookings,
+        courts: courtsData,
+        bookings: bookingsData,
+        user: usersData[0] ?? null,
         isLoading: false,
-        statusMessage: 'Data loaded successfully!',
+        statusMessage: 'Data loaded successfully from API!',
       })
-    }, 800)
+    } catch (err) {
+      set({
+        isLoading: false,
+        statusMessage: `API Error: ${err instanceof Error ? err.message : 'Failed to fetch'}`,
+      })
+    }
   },
 
   setSearchQuery: (query: string) => {

@@ -1,13 +1,17 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import BookingComponent from '../components/Booking'
+import { createBooking } from '../api/client'
 import { useBookingStore } from '../store/useBookingStore'
 import useToggle from '../hooks/useToggle'
 import { BookingStatus } from '../types'
-import type { Booking as BookingType } from '../types'
+import type { Booking as BookingType, CreateBookingInput } from '../types'
 
 const BookingPage: React.FC = () => {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+
   const user = useBookingStore((state) => state.user)
   const courts = useBookingStore((state) => state.courts)
   const isLoading = useBookingStore((state) => state.isLoading)
@@ -18,7 +22,17 @@ const BookingPage: React.FC = () => {
   const addBooking = useBookingStore((state) => state.addBooking)
 
   const [showNote, toggleShowNote] = useToggle(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // useMutation that POSTs a new booking payload and calls invalidateQueries in onSuccess
+  const bookingMutation = useMutation({
+    mutationFn: (newBooking: CreateBookingInput) => createBooking(newBooking),
+    onSuccess: () => {
+      // Invalidate queries so TanStack Query refetches updated collections
+      queryClient.invalidateQueries({ queryKey: ['bookings'] })
+      queryClient.invalidateQueries({ queryKey: ['courts'] })
+      navigate('/my-bookings')
+    },
+  })
 
   const selectedCourt = courts.find((c) => c.id === selectedCourtId) ?? courts[0]
 
@@ -37,15 +51,17 @@ const BookingPage: React.FC = () => {
     if (e) e.preventDefault()
     if (!selectedCourt) return
 
-    setIsSubmitting(true)
+    // Execute POST mutation
+    bookingMutation.mutate({
+      userId: user?.id ?? 1,
+      courtId: selectedCourt.id,
+      bookingDate: `${selectedDate}T12:00:00.000Z`,
+      durationHours: 2,
+      status: BookingStatus.Approved,
+    })
 
-    setTimeout(() => {
-      const success = addBooking(selectedCourt.id, selectedDate)
-      setIsSubmitting(false)
-      if (success) {
-        navigate('/my-bookings')
-      }
-    }, 500)
+    // Also update local store
+    addBooking(selectedCourt.id, selectedDate)
   }
 
   return (
@@ -154,7 +170,7 @@ const BookingPage: React.FC = () => {
             userName={user?.name ?? 'Unknown User'}
             courtName={selectedCourt?.name ?? 'None'}
             onConfirm={() => handleSubmitBooking()}
-            isConfirming={isSubmitting}
+            isConfirming={bookingMutation.isPending}
             isLoading={isLoading}
           />
         </div>

@@ -1,7 +1,10 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { getBookings } from '../api/client'
 import { useBookingStore } from '../store/useBookingStore'
 import { BookingStatus } from '../types'
+import type { Booking } from '../types'
 
 function MyBookingsEmptyState({ onAction }: { onAction: () => void }) {
   return (
@@ -36,10 +39,15 @@ function MyBookingsSkeletonCard() {
 
 const MyBookings: React.FC = () => {
   const navigate = useNavigate()
+
+  // Typed useQuery call 3: Fetch all bookings
+  const { data: bookings = [], isLoading } = useQuery<Booking[]>({
+    queryKey: ['bookings'],
+    queryFn: getBookings,
+  })
+
   const user = useBookingStore((state) => state.user)
   const courts = useBookingStore((state) => state.courts)
-  const bookings = useBookingStore((state) => state.bookings)
-  const isLoading = useBookingStore((state) => state.isLoading)
   const cancelBooking = useBookingStore((state) => state.cancelBooking)
 
   const [filterStatus, setFilterStatus] = useState<'all' | BookingStatus>('all')

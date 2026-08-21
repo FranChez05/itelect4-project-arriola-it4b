@@ -1,6 +1,9 @@
 import React from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { getCourtById } from '../api/client'
 import { useBookingStore } from '../store/useBookingStore'
+import type { Court } from '../types'
 
 // Typed params interface
 export type CourtDetailsParams = {
@@ -11,14 +14,30 @@ const CourtDetails: React.FC = () => {
   // Read URL parameter using typed useParams<{ courtId: string }>()
   const { courtId } = useParams<CourtDetailsParams>()
   const navigate = useNavigate()
-  
-  const courts = useBookingStore((state) => state.courts)
   const setSelectedCourtId = useBookingStore((state) => state.setSelectedCourtId)
-  
-  const parsedId = Number(courtId)
-  const court = courts.find((c) => c.id === parsedId)
 
-  if (!court) {
+  // Typed useQuery call 1: Keyed by courtId URL parameter
+  const {
+    data: court,
+    isLoading,
+    isError,
+  } = useQuery<Court>({
+    queryKey: ['courts', courtId],
+    queryFn: () => getCourtById(Number(courtId)),
+    enabled: !!courtId && !isNaN(Number(courtId)),
+  })
+
+  if (isLoading) {
+    return (
+      <div className="rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-8 shadow-xl text-center space-y-4 animate-pulse">
+        <div className="h-6 w-1/3 mx-auto bg-slate-200 dark:bg-slate-700 rounded-md" />
+        <div className="h-4 w-1/2 mx-auto bg-slate-100 dark:bg-slate-700/60 rounded-md" />
+        <p className="text-xs font-bold text-slate-500">Loading court #{courtId} details...</p>
+      </div>
+    )
+  }
+
+  if (isError || !court) {
     return (
       <div className="rounded-2xl border-2 border-rose-300 dark:border-rose-700 bg-rose-50/60 dark:bg-slate-800 p-8 text-center space-y-4">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-300 text-2xl font-black">

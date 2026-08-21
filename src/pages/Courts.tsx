@@ -1,7 +1,11 @@
 import React from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { getCourts } from '../api/client'
 import CourtComponent from '../components/Court'
 import { useBookingStore } from '../store/useBookingStore'
+import { useUiStore } from '../store/uiStore'
+import type { Court } from '../types'
 
 function CourtsEmptyState({ searchQuery, onClear }: { searchQuery: string; onClear: () => void }) {
   return (
@@ -36,10 +40,14 @@ function CourtsSkeletonCard() {
 
 const Courts: React.FC = () => {
   const navigate = useNavigate()
-  const courts = useBookingStore((state) => state.courts)
-  const isLoading = useBookingStore((state) => state.isLoading)
-  const searchQuery = useBookingStore((state) => state.searchQuery)
-  const setSearchQuery = useBookingStore((state) => state.setSearchQuery)
+
+  // Typed useQuery call 2: Fetch all courts directory
+  const { data: courts = [], isLoading } = useQuery<Court[]>({
+    queryKey: ['courts'],
+    queryFn: getCourts,
+  })
+  const searchTerm = useUiStore((state) => state.searchTerm)
+  const setSearchTerm = useUiStore((state) => state.setSearchTerm)
   const selectedCourtId = useBookingStore((state) => state.selectedCourtId)
   const setSelectedCourtId = useBookingStore((state) => state.setSelectedCourtId)
   const selectedDate = useBookingStore((state) => state.selectedDate)
@@ -49,8 +57,8 @@ const Courts: React.FC = () => {
 
   const filteredCourts = courts.filter(
     (court) =>
-      court.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      court.location.toLowerCase().includes(searchQuery.toLowerCase())
+      court.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      court.location.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const handleSelectAndBook = (courtId: number) => {
@@ -79,8 +87,8 @@ const Courts: React.FC = () => {
           <div className="w-full md:w-80">
             <input
               type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search by court or location..."
               className="w-full rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-[#F5FAF6] dark:bg-slate-700 px-4 py-2.5 text-xs font-extrabold text-[#064A8C] dark:text-white outline-none placeholder:text-slate-400 focus:border-[#0876D1] focus:ring-2 focus:ring-[#0876D1]/20 shadow-sm"
             />
@@ -106,7 +114,7 @@ const Courts: React.FC = () => {
           {isLoading ? (
             <CourtsSkeletonCard />
           ) : filteredCourts.length === 0 ? (
-            <CourtsEmptyState searchQuery={searchQuery} onClear={() => setSearchQuery('')} />
+            <CourtsEmptyState searchQuery={searchTerm} onClear={() => setSearchTerm('')} />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {filteredCourts.map((court) => {

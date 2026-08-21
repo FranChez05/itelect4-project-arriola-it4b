@@ -1,4 +1,3 @@
-import React from 'react'
 import type { User as UserType } from '../types'
 
 interface UserProps {

@@ -1,0 +1,55 @@
+{
+  "courts": [
+    {
+      "id": 1,
+      "name": "Court A - Main Arena",
+      "location": "Main Gym (Wood Floor)",
+      "isAvailable": true
+    },
+    {
+      "id": 2,
+      "name": "Court B - Side Arena",
+      "location": "Main Gym (Rubber Floor)",
+      "isAvailable": true
+    },
+    {
+      "id": 3,
+      "name": "Court C - VIP Hall",
+      "location": "VIP Complex (AC Room)",
+      "isAvailable": false
+    },
+    {
+      "id": 4,
+      "name": "Court D - Outdoor Arena",
+      "location": "East Annex (Synthetics)",
+      "isAvailable": true
+    }
+  ],
+  "bookings": [
+    {
+      "id": 101,
+      "userId": 1,
+      "courtId": 1,
+      "bookingDate": "2026-08-21T12:00:00.000Z",
+      "durationHours": 2,
+      "status": "approved"
+    },
+    {
+      "id": 102,
+      "userId": 1,
+      "courtId": 2,
+      "bookingDate": "2026-08-23T12:00:00.000Z",
+      "durationHours": 1,
+      "status": "pending"
+    }
+  ],
+  "users": [
+    {
+      "id": 1,
+      "name": "Ana Arriola",
+      "email": "arriolaana@gmail.com",
+      "role": "player",
+      "isActive": true
+    }
+  ]
+}

@@ -2,10 +2,11 @@ import React, { useEffect } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useBookingStore } from '../store/useBookingStore'
 import { useAuthStore } from '../store/authStore'
+import { useUiStore } from '../store/uiStore'
 
 const Layout: React.FC = () => {
-  const isDarkMode = useBookingStore((state) => state.isDarkMode)
-  const toggleDarkMode = useBookingStore((state) => state.toggleDarkMode)
+  const isDarkMode = useUiStore((state) => state.isDarkMode)
+  const toggleDarkMode = useUiStore((state) => state.toggleDarkMode)
   const bookingsCount = useBookingStore((state) => state.bookings.length)
   const statusMessage = useBookingStore((state) => state.statusMessage)
   const fetchData = useBookingStore((state) => state.fetchData)
