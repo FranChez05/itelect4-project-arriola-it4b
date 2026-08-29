@@ -1,18 +1,33 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useAuthStore } from '../store/authStore'
+import { loginSchema, type LoginFormData } from '../schemas/loginSchema'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 const Login: React.FC = () => {
   const navigate = useNavigate()
   const login = useAuthStore((state) => state.login)
-  
-  const [email, setEmail] = useState('arriolaana@gmail.com')
-  const [password, setPassword] = useState('password123')
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault()
-    // Perform login with token
-    login(`token_${Date.now()}_badminton_pass`)
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: 'arriolaana@gmail.com',
+      password: 'password123',
+    },
+  })
+
+  const onSubmit = (data: LoginFormData) => {
+    // Perform login with token — only fires when Zod validation passes
+    const username = data.email.split('@')[0] || 'player'
+    login(username)
     navigate('/', { replace: true })
   }
 
@@ -31,39 +46,54 @@ const Login: React.FC = () => {
           </p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div>
-            <label className="block text-xs font-black uppercase text-slate-700 dark:text-slate-300 mb-1">
+            <Label
+              htmlFor="login-email"
+              className="block text-xs font-black uppercase text-slate-700 dark:text-slate-300 mb-1"
+            >
               Email Address
-            </label>
-            <input
+            </Label>
+            <Input
+              id="login-email"
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
+              {...register('email')}
               className="w-full rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2.5 text-xs font-bold text-[#064A8C] dark:text-white outline-none focus:border-[#0876D1]"
             />
+            {errors.email && (
+              <p className="mt-1 text-xs font-bold text-rose-600 dark:text-rose-400">
+                {errors.email.message}
+              </p>
+            )}
           </div>
 
           <div>
-            <label className="block text-xs font-black uppercase text-slate-700 dark:text-slate-300 mb-1">
+            <Label
+              htmlFor="login-password"
+              className="block text-xs font-black uppercase text-slate-700 dark:text-slate-300 mb-1"
+            >
               Password
-            </label>
-            <input
+            </Label>
+            <Input
+              id="login-password"
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
+              {...register('password')}
               className="w-full rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2.5 text-xs font-bold text-[#064A8C] dark:text-white outline-none focus:border-[#0876D1]"
             />
+            {errors.password && (
+              <p className="mt-1 text-xs font-bold text-rose-600 dark:text-rose-400">
+                {errors.password.message}
+              </p>
+            )}
           </div>
 
-          <button
+          <Button
             type="submit"
+            disabled={isSubmitting}
             className="w-full rounded-xl bg-[#0876D1] hover:bg-[#064A8C] py-3 text-xs font-black uppercase tracking-wider text-white shadow-md transition-colors"
           >
             🔑 Log In & Authenticate
-          </button>
+          </Button>
         </form>
       </div>
     </div>

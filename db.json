@@ -41,6 +41,14 @@
       "bookingDate": "2026-08-23T12:00:00.000Z",
       "durationHours": 1,
       "status": "pending"
+    },
+    {
+      "userId": 1,
+      "courtId": 1,
+      "bookingDate": "2026-08-30T12:00:00.000Z",
+      "durationHours": 2,
+      "status": "approved",
+      "id": 103
     }
   ],
   "users": [

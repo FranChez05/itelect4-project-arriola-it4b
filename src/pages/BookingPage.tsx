@@ -1,11 +1,17 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import BookingComponent from '../components/Booking'
 import { createBooking } from '../api/client'
 import { useBookingStore } from '../store/useBookingStore'
 import useToggle from '../hooks/useToggle'
 import { BookingStatus } from '../types'
+import { bookingSchema, type BookingFormData } from '../schemas/bookingSchema'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import type { Booking as BookingType, CreateBookingInput } from '../types'
 
 const BookingPage: React.FC = () => {
@@ -15,10 +21,6 @@ const BookingPage: React.FC = () => {
   const user = useBookingStore((state) => state.user)
   const courts = useBookingStore((state) => state.courts)
   const isLoading = useBookingStore((state) => state.isLoading)
-  const selectedCourtId = useBookingStore((state) => state.selectedCourtId)
-  const setSelectedCourtId = useBookingStore((state) => state.setSelectedCourtId)
-  const selectedDate = useBookingStore((state) => state.selectedDate)
-  const setSelectedDate = useBookingStore((state) => state.setSelectedDate)
   const addBooking = useBookingStore((state) => state.addBooking)
 
   const [showNote, toggleShowNote] = useToggle(false)
@@ -34,34 +36,61 @@ const BookingPage: React.FC = () => {
     },
   })
 
-  const selectedCourt = courts.find((c) => c.id === selectedCourtId) ?? courts[0]
+  const getTodayDateStr = () => new Date().toISOString().slice(0, 10)
+
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors },
+  } = useForm<BookingFormData>({
+    resolver: zodResolver(bookingSchema),
+    defaultValues: {
+      courtId: courts[0]?.id ?? 1,
+      bookingDate: getTodayDateStr(),
+      durationHours: 2,
+    },
+  })
+
+  // Keep form in sync when courts load
+  useEffect(() => {
+    if (courts.length > 0) {
+      setValue('courtId', courts[0].id)
+    }
+  }, [courts, setValue])
+
+  const watchedCourtId = watch('courtId')
+  const watchedDate = watch('bookingDate')
+  const selectedCourt = courts.find((c) => c.id === watchedCourtId) ?? courts[0]
 
   const activeBookingPreview: BookingType | null = selectedCourt
     ? {
         id: 999,
         userId: user?.id ?? 1,
         courtId: selectedCourt.id,
-        bookingDate: new Date(`${selectedDate}T12:00:00`),
+        bookingDate: new Date(`${watchedDate}T12:00:00`),
         durationHours: 2,
         status: BookingStatus.Pending,
       }
     : null
 
-  const handleSubmitBooking = (e?: React.FormEvent) => {
-    if (e) e.preventDefault()
-    if (!selectedCourt) return
+  // onSubmit only fires when Zod validation passes — invalid forms send NO request
+  const onSubmit = (data: BookingFormData) => {
+    const court = courts.find((c) => c.id === data.courtId)
+    if (!court) return
 
     // Execute POST mutation
     bookingMutation.mutate({
       userId: user?.id ?? 1,
-      courtId: selectedCourt.id,
-      bookingDate: `${selectedDate}T12:00:00.000Z`,
-      durationHours: 2,
+      courtId: data.courtId,
+      bookingDate: `${data.bookingDate}T12:00:00.000Z`,
+      durationHours: data.durationHours,
       status: BookingStatus.Approved,
     })
 
     // Also update local store
-    addBooking(selectedCourt.id, selectedDate)
+    addBooking(data.courtId, data.bookingDate)
   }
 
   return (
@@ -86,7 +115,7 @@ const BookingPage: React.FC = () => {
             Reservation Parameters
           </h2>
 
-          <form onSubmit={handleSubmitBooking} className="space-y-4">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             {/* Player Info Summary */}
             <div className="rounded-xl bg-[#F5FAF6] dark:bg-slate-700 p-4 border border-[#078A63]/30 flex items-center justify-between">
               <div>
@@ -100,12 +129,15 @@ const BookingPage: React.FC = () => {
 
             {/* Court Selection */}
             <div>
-              <label className="block text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
+              <Label
+                htmlFor="booking-court"
+                className="block text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase mb-1.5"
+              >
                 Choose Facility Court
-              </label>
+              </Label>
               <select
-                value={selectedCourtId}
-                onChange={(e) => setSelectedCourtId(Number(e.target.value))}
+                id="booking-court"
+                {...register('courtId', { valueAsNumber: true })}
                 className="w-full rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2.5 text-xs font-extrabold text-[#064A8C] dark:text-white outline-none focus:border-[#0876D1] focus:ring-2 focus:ring-[#0876D1]/20 shadow-sm"
               >
                 {courts.map((c) => (
@@ -114,43 +146,66 @@ const BookingPage: React.FC = () => {
                   </option>
                 ))}
               </select>
+              {errors.courtId && (
+                <p className="mt-1 text-xs font-bold text-rose-600 dark:text-rose-400">
+                  {errors.courtId.message}
+                </p>
+              )}
             </div>
 
             {/* Date Selection */}
             <div>
-              <label className="block text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
+              <Label
+                htmlFor="booking-date"
+                className="block text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase mb-1.5"
+              >
                 Match Date
-              </label>
-              <input
+              </Label>
+              <Input
+                id="booking-date"
                 type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
+                {...register('bookingDate')}
                 className="w-full rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2.5 text-xs font-extrabold text-[#064A8C] dark:text-white outline-none focus:border-[#0876D1] focus:ring-2 focus:ring-[#0876D1]/20 shadow-sm"
               />
+              {errors.bookingDate && (
+                <p className="mt-1 text-xs font-bold text-rose-600 dark:text-rose-400">
+                  {errors.bookingDate.message}
+                </p>
+              )}
             </div>
 
             {/* Duration Display */}
             <div>
-              <label className="block text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase mb-1.5">
+              <Label
+                htmlFor="booking-duration"
+                className="block text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase mb-1.5"
+              >
                 Session Duration
-              </label>
-              <input
+              </Label>
+              <Input
+                id="booking-duration"
                 type="text"
                 disabled
                 value="2 Hours Standard Match Block"
                 className="w-full rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-600 px-4 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-200 cursor-not-allowed"
               />
+              {errors.durationHours && (
+                <p className="mt-1 text-xs font-bold text-rose-600 dark:text-rose-400">
+                  {errors.durationHours.message}
+                </p>
+              )}
             </div>
 
             {/* Toggle Booking Notes */}
             <div className="pt-2">
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={toggleShowNote}
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-[#F5FAF6] dark:bg-slate-700 py-2.5 px-4 text-xs font-extrabold text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
               >
                 {showNote ? '▲ Hide Rules & Notes' : '▼ Read Court Guidelines'}
-              </button>
+              </Button>
 
               {showNote && (
                 <div className="mt-2.5 rounded-xl bg-[#EAF6EC] dark:bg-slate-700/80 border border-[#078A63]/40 p-4 text-xs font-medium text-[#078A63] dark:text-emerald-300 space-y-1">
@@ -160,6 +215,15 @@ const BookingPage: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Submit Button */}
+            <Button
+              type="submit"
+              disabled={bookingMutation.isPending}
+              className="w-full rounded-xl bg-[#078A63] hover:bg-[#065f46] py-3 text-xs font-black uppercase tracking-wider text-white shadow-md transition-colors"
+            >
+              {bookingMutation.isPending ? '⏳ Submitting...' : '🎟️ Confirm Reservation'}
+            </Button>
           </form>
         </div>
 
@@ -169,7 +233,7 @@ const BookingPage: React.FC = () => {
             booking={activeBookingPreview}
             userName={user?.name ?? 'Unknown User'}
             courtName={selectedCourt?.name ?? 'None'}
-            onConfirm={() => handleSubmitBooking()}
+            onConfirm={() => { handleSubmit(onSubmit)() }}
             isConfirming={bookingMutation.isPending}
             isLoading={isLoading}
           />
