@@ -8,6 +8,7 @@ import CourtDetails from './pages/CourtDetails'
 import BookingPage from './pages/BookingPage'
 import MyBookings from './pages/MyBookings'
 import Login from './pages/Login'
+import Register from './pages/Register'
 import NotFound from './pages/NotFound'
 import './App.css'
 
@@ -15,8 +16,9 @@ const App: React.FC = () => {
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
-        {/* Public Login Route */}
+        {/* Public Auth Routes */}
         <Route path="login" element={<Login />} />
+        <Route path="register" element={<Register />} />
 
         {/* Protected Route Table */}
         <Route element={<ProtectedRoute />}>

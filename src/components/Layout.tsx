@@ -76,18 +76,26 @@ const Layout: React.FC = () => {
                   <button
                     type="button"
                     onClick={logout}
-                    className="flex items-center gap-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 px-3 py-1.5 text-xs font-black uppercase tracking-wider text-white shadow-md transition-all"
+                    className="flex items-center gap-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 px-3 py-1.5 text-xs font-black uppercase tracking-wider text-white shadow-md transition-all cursor-pointer"
                     title="Log Out Player Session"
                   >
                     🚪 Logout
                   </button>
                 ) : (
-                  <NavLink
-                    to="/login"
-                    className="flex items-center gap-1.5 rounded-lg bg-[#0876D1] hover:bg-[#064A8C] px-3 py-1.5 text-xs font-black uppercase tracking-wider text-white shadow-md transition-all"
-                  >
-                    🔑 Login
-                  </NavLink>
+                  <div className="flex items-center gap-1.5">
+                    <NavLink
+                      to="/login"
+                      className="flex items-center gap-1.5 rounded-lg bg-[#0876D1] hover:bg-[#064A8C] px-3 py-1.5 text-xs font-black uppercase tracking-wider text-white shadow-md transition-all"
+                    >
+                      🔑 Login
+                    </NavLink>
+                    <NavLink
+                      to="/register"
+                      className="flex items-center gap-1.5 rounded-lg bg-[#078A63] hover:bg-[#066e4f] px-3 py-1.5 text-xs font-black uppercase tracking-wider text-white shadow-md transition-all"
+                    >
+                      ✨ Register
+                    </NavLink>
+                  </div>
                 )}
 
                 <button

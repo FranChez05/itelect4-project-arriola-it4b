@@ -6,38 +6,86 @@ import type {
   CreateBookingInput,
   CreateUserInput,
 } from '../types'
+import { useAuthStore } from '../store/authStore'
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const ENV_URL = (import.meta.env.VITE_API_URL || 'http://localhost:4000').replace(/\/+$/, '')
+const API_URL = ENV_URL.endsWith('/api') ? ENV_URL : `${ENV_URL}/api`
 
-async function handleResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => '')
-    throw new Error(`API Error ${response.status}: ${errorText || response.statusText}`)
+export interface RequestOptions extends RequestInit {
+  isPrivate?: boolean
+}
+
+/**
+ * Universal request helper that reads VITE_API_URL and automatically attaches
+ * the Bearer token authorization header on private calls.
+ */
+export async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+  const { isPrivate = true, headers: customHeaders, ...fetchOptions } = options
+  const token = useAuthStore.getState().token
+
+  const headers = new Headers(customHeaders || {})
+
+  if (!headers.has('Content-Type') && !(fetchOptions.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json')
   }
+
+  // Attach Bearer header on every private call when token exists
+  if (isPrivate && token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
+  const url = `${API_URL}${cleanEndpoint}`
+
+  const response = await fetch(url, {
+    ...fetchOptions,
+    headers,
+  })
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    let errorMessage = text || `API Error ${response.status}: ${response.statusText}`
+    try {
+      const json = JSON.parse(text)
+      if (json && typeof json === 'object') {
+        errorMessage = json.error || json.message || errorMessage
+      }
+    } catch {
+      // plain text message
+    }
+    throw new Error(errorMessage)
+  }
+
+  if (response.status === 204) {
+    return {} as T
+  }
+
   return response.json() as Promise<T>
 }
 
-export function parseBooking(apiBooking: ApiBooking): Booking {
+export function parseBooking(apiBooking: any): Booking {
   return {
     ...apiBooking,
-    id: Number(apiBooking.id),
-    userId: Number(apiBooking.userId),
+    id: apiBooking.id ?? apiBooking._id,
+    userId: apiBooking.userId,
     courtId: Number(apiBooking.courtId),
     bookingDate: new Date(apiBooking.bookingDate),
+    durationHours: Number(apiBooking.durationHours),
+    status: apiBooking.status as BookingStatus,
   }
 }
 
-export function parseCourt(court: Court): Court {
+export function parseCourt(court: any): Court {
   return {
     ...court,
-    id: Number(court.id),
+    id: court.id ?? court._id,
   }
 }
 
-export function parseUser(user: User): User {
+export function parseUser(user: any): User {
   return {
     ...user,
-    id: Number(user.id),
+    id: user.id ?? user._id,
   }
 }
 
@@ -48,11 +96,49 @@ const FALLBACK_COURTS: Court[] = [
   { id: 4, name: 'Court D - Outdoor Arena', location: 'East Annex (Synthetics)', isAvailable: true },
 ]
 
+// --- AUTH API ---
+export interface LoginResponse {
+  token: string
+  user: {
+    id: string
+    role?: string
+    name?: string
+    email?: string
+  }
+}
+
+export interface RegisterResponse {
+  id: string
+  name: string
+  email: string
+  role?: string
+}
+
+export async function loginApi(credentials: { email: string; password: string }): Promise<LoginResponse> {
+  return request<LoginResponse>('/auth/login', {
+    method: 'POST',
+    isPrivate: false,
+    body: JSON.stringify(credentials),
+  })
+}
+
+export async function registerApi(data: {
+  name: string
+  email: string
+  password: string
+  role?: string
+}): Promise<RegisterResponse> {
+  return request<RegisterResponse>('/auth/register', {
+    method: 'POST',
+    isPrivate: false,
+    body: JSON.stringify(data),
+  })
+}
+
 // --- COURTS API ---
 export async function getCourts(): Promise<Court[]> {
   try {
-    const res = await fetch(`${BASE_URL}/courts`)
-    const courts = await handleResponse<Court[]>(res)
+    const courts = await request<Court[]>('/courts', { isPrivate: false })
     return courts.map(parseCourt)
   } catch (err) {
     console.warn('API /courts unreachable, falling back to local facility data:', err)
@@ -60,26 +146,24 @@ export async function getCourts(): Promise<Court[]> {
   }
 }
 
-export async function getCourtById(id: number): Promise<Court> {
+export async function getCourtById(id: number | string): Promise<Court> {
   try {
-    const res = await fetch(`${BASE_URL}/courts/${id}`)
-    const court = await handleResponse<Court>(res)
+    const court = await request<Court>(`/courts/${id}`, { isPrivate: false })
     return parseCourt(court)
   } catch (err) {
     console.warn(`API /courts/${id} unreachable, falling back to local facility data:`, err)
-    const match = FALLBACK_COURTS.find((c) => c.id === id)
+    const match = FALLBACK_COURTS.find((c) => String(c.id) === String(id))
     if (match) return match
     throw err
   }
 }
 
 export async function createCourt(input: CreateCourtInput): Promise<Court> {
-  const res = await fetch(`${BASE_URL}/courts`, {
+  const court = await request<Court>('/courts', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    isPrivate: true,
     body: JSON.stringify(input),
   })
-  const court = await handleResponse<Court>(res)
   return parseCourt(court)
 }
 
@@ -149,8 +233,7 @@ export function saveLocalStoredBookings(bookings: ApiBooking[]): void {
 // --- BOOKINGS API ---
 export async function getBookings(): Promise<Booking[]> {
   try {
-    const res = await fetch(`${BASE_URL}/bookings`)
-    const rawBookings = await handleResponse<ApiBooking[]>(res)
+    const rawBookings = await request<ApiBooking[]>('/bookings', { isPrivate: true })
     if (Array.isArray(rawBookings) && rawBookings.length > 0) {
       saveLocalStoredBookings(rawBookings)
     }
@@ -161,14 +244,13 @@ export async function getBookings(): Promise<Booking[]> {
   }
 }
 
-export async function getBookingById(id: number): Promise<Booking> {
+export async function getBookingById(id: number | string): Promise<Booking> {
   try {
-    const res = await fetch(`${BASE_URL}/bookings/${id}`)
-    const rawBooking = await handleResponse<ApiBooking>(res)
+    const rawBooking = await request<ApiBooking>(`/bookings/${id}`, { isPrivate: true })
     return parseBooking(rawBooking)
   } catch (err) {
     console.warn(`API /bookings/${id} unreachable, using local reservation:`, err)
-    const local = getLocalStoredBookings().find((b) => Number(b.id) === id)
+    const local = getLocalStoredBookings().find((b) => String(b.id) === String(id))
     if (local) return parseBooking(local)
     throw err
   }
@@ -183,12 +265,11 @@ export async function createBooking(input: CreateBookingInput): Promise<Booking>
         : input.bookingDate.toISOString(),
   }
   try {
-    const res = await fetch(`${BASE_URL}/bookings`, {
+    const rawBooking = await request<ApiBooking>('/bookings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      isPrivate: true,
       body: JSON.stringify(payload),
     })
-    const rawBooking = await handleResponse<ApiBooking>(res)
     const current = getLocalStoredBookings()
     saveLocalStoredBookings([rawBooking, ...current])
     return parseBooking(rawBooking)
@@ -208,60 +289,60 @@ export async function createBooking(input: CreateBookingInput): Promise<Booking>
   }
 }
 
-export async function updateBookingStatus(id: number, status: BookingStatus): Promise<Booking> {
+export async function updateBookingStatus(id: number | string, status: BookingStatus): Promise<Booking> {
   try {
-    const res = await fetch(`${BASE_URL}/bookings/${id}`, {
+    const rawBooking = await request<ApiBooking>(`/bookings/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      isPrivate: true,
       body: JSON.stringify({ status }),
     })
-    const rawBooking = await handleResponse<ApiBooking>(res)
     return parseBooking(rawBooking)
   } catch (err) {
     console.warn(`API /bookings/${id} PATCH failed, updating reservation locally:`, err)
     const current = getLocalStoredBookings()
-    const updated = current.map((b) => (Number(b.id) === id ? { ...b, status } : b))
+    const updated = current.map((b) => (String(b.id) === String(id) ? { ...b, status } : b))
     saveLocalStoredBookings(updated)
-    const target = updated.find((b) => Number(b.id) === id)
+    const target = updated.find((b) => String(b.id) === String(id))
     if (target) return parseBooking(target)
     throw err
   }
 }
 
-export async function deleteBooking(id: number): Promise<void> {
+export async function deleteBooking(id: number | string): Promise<void> {
   try {
-    const res = await fetch(`${BASE_URL}/bookings/${id}`, {
+    await request<void>(`/bookings/${id}`, {
       method: 'DELETE',
+      isPrivate: true,
     })
-    if (!res.ok) {
-      throw new Error(`Failed to delete booking #${id}`)
-    }
   } catch (err) {
     console.warn(`API /bookings/${id} DELETE failed, deleting from local storage:`, err)
     const current = getLocalStoredBookings()
-    saveLocalStoredBookings(current.filter((b) => Number(b.id) !== id))
+    saveLocalStoredBookings(current.filter((b) => String(b.id) !== String(id)))
   }
 }
 
 // --- USERS API ---
 export async function getUsers(): Promise<User[]> {
-  const res = await fetch(`${BASE_URL}/users`)
-  const users = await handleResponse<User[]>(res)
-  return users.map(parseUser)
+  try {
+    const users = await request<User[]>('/users', { isPrivate: true })
+    return users.map(parseUser)
+  } catch {
+    return [
+      { id: 1, name: 'Ana Arriola', email: 'arriolaana@gmail.com', role: 'player', isActive: true },
+    ]
+  }
 }
 
-export async function getUserById(id: number): Promise<User> {
-  const res = await fetch(`${BASE_URL}/users/${id}`)
-  const user = await handleResponse<User>(res)
+export async function getUserById(id: number | string): Promise<User> {
+  const user = await request<User>(`/users/${id}`, { isPrivate: true })
   return parseUser(user)
 }
 
 export async function createUser(input: CreateUserInput): Promise<User> {
-  const res = await fetch(`${BASE_URL}/users`, {
+  const user = await request<User>('/users', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    isPrivate: true,
     body: JSON.stringify(input),
   })
-  const user = await handleResponse<User>(res)
   return parseUser(user)
 }
