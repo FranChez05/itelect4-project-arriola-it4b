@@ -27,28 +27,108 @@
   ],
   "bookings": [
     {
-      "id": 101,
-      "userId": 1,
-      "courtId": 1,
-      "bookingDate": "2026-08-21T12:00:00.000Z",
-      "durationHours": 2,
-      "status": "approved"
-    },
-    {
       "id": 102,
       "userId": 1,
       "courtId": 2,
       "bookingDate": "2026-08-23T12:00:00.000Z",
       "durationHours": 1,
-      "status": "pending"
+      "status": "cancelled"
     },
     {
       "userId": 1,
       "courtId": 1,
       "bookingDate": "2026-08-30T12:00:00.000Z",
       "durationHours": 2,
-      "status": "approved",
+      "status": "cancelled",
       "id": 103
+    },
+    {
+      "userId": 1,
+      "courtId": 2,
+      "bookingDate": "2026-09-04T12:00:00.000Z",
+      "durationHours": 2,
+      "status": "approved",
+      "id": 105
+    },
+    {
+      "userId": 1,
+      "courtId": 1,
+      "bookingDate": "2026-09-04T12:00:00.000Z",
+      "durationHours": 2,
+      "status": "pending",
+      "id": 106
+    },
+    {
+      "userId": 1,
+      "courtId": 1,
+      "bookingDate": "2026-09-04T12:00:00.000Z",
+      "durationHours": 2,
+      "status": "pending",
+      "id": 107
+    },
+    {
+      "userId": 1,
+      "courtId": 1,
+      "bookingDate": "2026-09-04T12:00:00.000Z",
+      "durationHours": 2,
+      "status": "pending",
+      "id": 108
+    },
+    {
+      "userId": 1,
+      "courtId": 1,
+      "bookingDate": "2026-09-04T12:00:00.000Z",
+      "durationHours": 2,
+      "status": "pending",
+      "id": 109
+    },
+    {
+      "userId": 1,
+      "courtId": 1,
+      "bookingDate": "2026-09-04T12:00:00.000Z",
+      "durationHours": 2,
+      "status": "pending",
+      "id": 110
+    },
+    {
+      "userId": 1,
+      "courtId": 1,
+      "bookingDate": "2026-09-04T12:00:00.000Z",
+      "durationHours": 2,
+      "status": "pending",
+      "id": 111
+    },
+    {
+      "userId": 1,
+      "courtId": 1,
+      "bookingDate": "2026-09-04T12:00:00.000Z",
+      "durationHours": 2,
+      "status": "pending",
+      "id": 112
+    },
+    {
+      "userId": 1,
+      "courtId": 1,
+      "bookingDate": "2026-09-04T12:00:00.000Z",
+      "durationHours": 2,
+      "status": "pending",
+      "id": 113
+    },
+    {
+      "userId": 1,
+      "courtId": 1,
+      "bookingDate": "2026-09-04T12:00:00.000Z",
+      "durationHours": 2,
+      "status": "pending",
+      "id": 114
+    },
+    {
+      "userId": 1,
+      "courtId": 1,
+      "bookingDate": "2026-09-05T12:00:00.000Z",
+      "durationHours": 2,
+      "status": "pending",
+      "id": 115
     }
   ],
   "users": [

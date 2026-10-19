@@ -40,7 +40,7 @@ const Layout: React.FC = () => {
                     🏸 BAMICOURT
                   </span>
                   <span className="text-sm font-bold text-blue-100 dark:text-blue-200 hidden sm:inline">
-                    Court Booking Portal
+                    Badminton Court Booking Portal
                   </span>
                 </NavLink>
               </div>
@@ -53,10 +53,9 @@ const Layout: React.FC = () => {
                       key={item.path}
                       to={item.path}
                       className={({ isActive }) =>
-                        `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 ${
-                          isActive
-                            ? 'bg-[#0876D1] text-white shadow-md scale-105'
-                            : 'text-blue-100 hover:text-white hover:bg-white/10'
+                        `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 ${isActive
+                          ? 'bg-[#0876D1] text-white shadow-md scale-105'
+                          : 'text-blue-100 hover:text-white hover:bg-white/10'
                         }`
                       }
                     >

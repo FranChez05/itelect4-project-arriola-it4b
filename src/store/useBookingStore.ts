@@ -64,6 +64,13 @@ export const useBookingStore = create<BookingStoreState>((set, get) => ({
           { id: 3, name: 'Court C - VIP Hall', location: 'VIP Complex (AC Room)', isAvailable: false },
           { id: 4, name: 'Court D - Outdoor Arena', location: 'East Annex (Synthetics)', isAvailable: true },
         ],
+        bookings: [
+          { id: 102, userId: 1, courtId: 2, bookingDate: new Date('2026-08-23T12:00:00.000Z'), durationHours: 1, status: BookingStatus.Cancelled },
+          { id: 103, userId: 1, courtId: 1, bookingDate: new Date('2026-08-30T12:00:00.000Z'), durationHours: 2, status: BookingStatus.Cancelled },
+          { id: 105, userId: 1, courtId: 2, bookingDate: new Date('2026-09-04T12:00:00.000Z'), durationHours: 2, status: BookingStatus.Approved },
+          { id: 106, userId: 1, courtId: 1, bookingDate: new Date('2026-09-04T12:00:00.000Z'), durationHours: 2, status: BookingStatus.Pending },
+          { id: 107, userId: 1, courtId: 1, bookingDate: new Date('2026-09-05T12:00:00.000Z'), durationHours: 2, status: BookingStatus.Pending },
+        ],
         user: { id: 1, name: 'Ana Arriola', email: 'arriolaana@gmail.com', role: 'player', isActive: true },
         isLoading: false,
         statusMessage: `API Server offline — using cached data (${err instanceof Error ? err.message : 'offline'})`,
@@ -117,7 +124,7 @@ export const useBookingStore = create<BookingStoreState>((set, get) => ({
       courtId: court.id,
       bookingDate: new Date(`${dateStr}T12:00:00`),
       durationHours: 2,
-      status: BookingStatus.Approved,
+      status: BookingStatus.Pending,
     }
 
     set({
@@ -130,8 +137,10 @@ export const useBookingStore = create<BookingStoreState>((set, get) => ({
 
   cancelBooking: (bookingId: number) => {
     set((state) => ({
-      bookings: state.bookings.filter((b) => b.id !== bookingId),
-      statusMessage: `Booking #${bookingId} was cancelled`,
+      bookings: state.bookings.map((b) =>
+        b.id === bookingId ? { ...b, status: BookingStatus.Cancelled } : b
+      ),
+      statusMessage: `Booking #${bookingId} was marked as cancelled`,
     }))
   },
 

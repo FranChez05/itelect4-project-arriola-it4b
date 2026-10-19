@@ -1,3 +1,4 @@
+
 node_modules/
 dist/
 .vite/
@@ -9,6 +10,9 @@ pnpm-debug.log*
 *.tsbuildinfo
 .env
 .env.*
+!.env.example
 coverage/
 .vscode/
 .idea/
+itelect4-backend/
+.~*

@@ -80,13 +80,13 @@ const BookingPage: React.FC = () => {
     const court = courts.find((c) => c.id === data.courtId)
     if (!court) return
 
-    // Execute POST mutation
+    // Execute POST mutation with Pending status
     bookingMutation.mutate({
       userId: user?.id ?? 1,
       courtId: data.courtId,
       bookingDate: `${data.bookingDate}T12:00:00.000Z`,
       durationHours: data.durationHours,
-      status: BookingStatus.Approved,
+      status: BookingStatus.Pending,
     })
 
     // Also update local store

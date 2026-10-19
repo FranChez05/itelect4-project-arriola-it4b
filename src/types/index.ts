@@ -4,6 +4,8 @@ export type UserRole = "player" | "admin";
 export enum BookingStatus {
   Pending = "pending",
   Approved = "approved",
+  Declined = "declined",
+  Cancelled = "cancelled",
   Completed = "completed",
 }
 
