@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useAuthStore } from '../store/authStore'
+import { useBookingStore } from '../store/useBookingStore'
 import { registerSchema, type RegisterFormData } from '../schemas/registerSchema'
 import { registerApi, loginApi } from '../api/client'
 import { Button } from '@/components/ui/button'
@@ -52,6 +53,9 @@ const Register: React.FC = () => {
         email: data.email,
         role: regResponse.role || data.role,
       })
+
+      // Fetch fresh court and booking data using newly acquired JWT token
+      await useBookingStore.getState().fetchData()
 
       setIsSuccess(true)
       setTimeout(() => {

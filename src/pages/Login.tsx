@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useAuthStore } from '../store/authStore'
+import { useBookingStore } from '../store/useBookingStore'
 import { loginSchema, type LoginFormData } from '../schemas/loginSchema'
 import { loginApi } from '../api/client'
 import { Button } from '@/components/ui/button'
@@ -41,6 +42,9 @@ const Login: React.FC = () => {
         email: data.email,
         role: response.user.role || 'player',
       })
+
+      // Fetch fresh court and booking data using newly acquired JWT token
+      await useBookingStore.getState().fetchData()
 
       navigate('/', { replace: true })
     } catch (err) {

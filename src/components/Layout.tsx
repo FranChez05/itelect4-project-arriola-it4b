@@ -14,10 +14,10 @@ const Layout: React.FC = () => {
   const token = useAuthStore((state) => state.token)
   const logout = useAuthStore((state) => state.logout)
 
-  // Trigger mock async fetch on component mount / page refresh
+  // Trigger data fetch on component mount and whenever auth token changes (login/logout)
   useEffect(() => {
     fetchData()
-  }, [fetchData])
+  }, [token, fetchData])
 
   const navItems = [
     { label: 'Home', path: '/' },
