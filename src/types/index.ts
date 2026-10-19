@@ -4,11 +4,13 @@ export type UserRole = "player" | "admin";
 export enum BookingStatus {
   Pending = "pending",
   Approved = "approved",
+  Declined = "declined",
+  Cancelled = "cancelled",
   Completed = "completed",
 }
 
 //INTERFACES
-export interface    User {
+export interface User {
   id: number;
   name: string;
   email: string;
@@ -42,3 +44,16 @@ export interface ApiResponse<T> {
 //UTILITY TYPES
 export type UserUpdate = Partial<User>;
 export type PublicUser = Omit<User, "email" | "isActive">;
+
+// API TYPES (JSON representations & creation payloads derived with Omit)
+// JSON cannot represent JS Date objects, so bookingDate is string in raw JSON
+export type ApiBooking = Omit<Booking, "bookingDate"> & {
+  bookingDate: string;
+};
+
+// Payloads for creating entities (omitting server-generated id)
+export type CreateCourtInput = Omit<Court, "id">;
+export type CreateBookingInput = Omit<Booking, "id" | "bookingDate"> & {
+  bookingDate: string | Date;
+};
+export type CreateUserInput = Omit<User, "id">;
