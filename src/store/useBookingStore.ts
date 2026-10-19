@@ -1,7 +1,8 @@
 import { create } from 'zustand'
-import { BookingStatus } from '../types'
+import { BookingStatus, type UserRole } from '../types'
 import type { Booking, Court, User } from '../types'
-import { getCourts, getBookings, getUsers } from '../api/client'
+import { getCourts, getBookings } from '../api/client'
+import { useAuthStore } from './authStore'
 
 export interface BookingStoreState {
   // Data State
@@ -18,7 +19,7 @@ export interface BookingStoreState {
   isDarkMode: boolean
   
   // Actions
-  fetchData: () => void
+  fetchData: () => Promise<void>
   setSearchQuery: (query: string) => void
   setSelectedCourtId: (courtId: number) => void
   setSelectedDate: (date: string) => void
@@ -42,17 +43,34 @@ export const useBookingStore = create<BookingStoreState>((set, get) => ({
   isDarkMode: window.localStorage.getItem('badminton-theme') === 'dark',
 
   fetchData: async () => {
+    const authState = useAuthStore.getState()
+    const authUser = authState.user
     set({ isLoading: true, statusMessage: 'Fetching data from API server...' })
     try {
-      const [courtsData, bookingsData, usersData] = await Promise.all([
+      const [courtsData, bookingsData] = await Promise.all([
         getCourts(),
         getBookings(),
-        getUsers(),
       ])
+      const activeUser: User = authUser
+        ? {
+            id: typeof authUser.id === 'number' ? authUser.id : (Number(authUser.id) || 1),
+            name: authUser.name || authState.userName || 'Player',
+            email: authUser.email || 'player@example.com',
+            role: (authUser.role as UserRole) || 'player',
+            isActive: true,
+          }
+        : {
+            id: 1,
+            name: authState.userName || 'Player',
+            email: 'player@example.com',
+            role: 'player',
+            isActive: true,
+          }
+
       set({
         courts: courtsData,
         bookings: bookingsData,
-        user: usersData[0] ?? null,
+        user: activeUser,
         isLoading: false,
         statusMessage: 'Data loaded successfully from API!',
       })
