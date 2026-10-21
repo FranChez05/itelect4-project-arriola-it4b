@@ -10,11 +10,10 @@ import { useAuthStore } from '../store/authStore'
 
 const ENV_URL = (
   import.meta.env.VITE_API_URL ||
-  (import.meta.env.PROD
-    ? 'https://itelect4-backend-arriola-it4b.vercel.app'
-    : 'http://localhost:4000')
+  (import.meta.env.PROD ? '' : 'http://localhost:4000')
 ).replace(/\/+$/, '')
-const API_URL = ENV_URL.endsWith('/api') ? ENV_URL : `${ENV_URL}/api`
+
+const API_URL = ENV_URL ? (ENV_URL.endsWith('/api') ? ENV_URL : `${ENV_URL}/api`) : '/api'
 
 export interface RequestOptions extends RequestInit {
   isPrivate?: boolean
