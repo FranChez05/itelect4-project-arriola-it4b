@@ -69,6 +69,21 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
     } catch {
       // plain text message
     }
+    // A protected API returning 401 means the persisted JWT is no longer valid.
+    // Clear it so ProtectedRoute sends the user to sign in again instead of
+    // leaving every protected page stuck with an expired-token error.
+    if (response.status === 401 && isPrivate) {
+      useAuthStore.getState().logout()
+      try {
+        window.sessionStorage.setItem(
+          'itelect4-auth-notice',
+          'Your session expired. Please sign in again to continue.'
+        )
+      } catch {
+        // Session storage can be unavailable in restricted browser contexts.
+      }
+    }
+
     throw new Error(errorMessage)
   }
 

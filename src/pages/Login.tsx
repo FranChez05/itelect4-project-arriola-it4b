@@ -14,6 +14,15 @@ const Login: React.FC = () => {
   const navigate = useNavigate()
   const setAuth = useAuthStore((state) => state.setAuth)
   const [apiError, setApiError] = useState<string | null>(null)
+  const [sessionNotice] = useState(() => {
+    try {
+      const notice = window.sessionStorage.getItem('itelect4-auth-notice')
+      window.sessionStorage.removeItem('itelect4-auth-notice')
+      return notice
+    } catch {
+      return null
+    }
+  })
 
   const {
     register,
@@ -68,6 +77,12 @@ const Login: React.FC = () => {
             Sign in to access protected court booking services.
           </p>
         </div>
+
+        {sessionNotice && (
+          <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-xs font-bold text-amber-800">
+            {sessionNotice}
+          </p>
+        )}
 
         {apiError && (
           <div className="rounded-xl border border-rose-300 bg-rose-50 dark:bg-rose-950/40 dark:border-rose-800 p-3.5 text-xs font-bold text-rose-700 dark:text-rose-300 flex items-center gap-2">
