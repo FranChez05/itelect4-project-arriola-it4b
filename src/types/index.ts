@@ -61,11 +61,14 @@ export type CreateBookingInput = Omit<Booking, "id" | "bookingDate"> & {
   bookingDate: string | Date;
 };
 export type CreateUserInput = Omit<User, "id">;
-export type AiReadiness = 'ready' | 'almost' | 'not-yet'
+export type AiReviewTopic = 'booking' | 'availability' | 'account' | 'admin' | 'mixed' | 'other'
+
+export interface AiReviewAnswer {
+  question: string
+  answer: string
+}
 
 export interface AiReview {
-  summary: string
-  strengths: string[]
-  improvements: string[]
-  readiness: AiReadiness
+  topic: AiReviewTopic
+  answers: AiReviewAnswer[]
 }

@@ -663,8 +663,15 @@ export async function askAi(prompt: string): Promise<AiReview> {
     body: JSON.stringify({ prompt }),
   })
 
-  if (!result || !result.summary || !Array.isArray(result.strengths) || !Array.isArray(result.improvements) || !result.readiness) {
-    throw new Error('The AI service returned an invalid review. Please try again.')
+  const validTopics: AiReview['topic'][] = ['booking', 'availability', 'account', 'admin', 'mixed', 'other']
+  if (
+    !result ||
+    !validTopics.includes(result.topic) ||
+    !Array.isArray(result.answers) ||
+    result.answers.length === 0 ||
+    !result.answers.every((item) => typeof item?.question === 'string' && typeof item?.answer === 'string')
+  ) {
+    throw new Error('The AI service returned an invalid answer. Please try again.')
   }
   return result
 }
