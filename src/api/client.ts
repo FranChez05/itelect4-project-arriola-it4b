@@ -1,4 +1,4 @@
-import type { Court, Booking, User } from '../types'
+import type { Court, Booking, User, AiReview } from '../types'
 import { BookingStatus } from '../types'
 import type {
   ApiBooking,
@@ -17,6 +17,7 @@ const API_URL = ENV_URL ? (ENV_URL.endsWith('/api') ? ENV_URL : `${ENV_URL}/api`
 
 export interface RequestOptions extends RequestInit {
   isPrivate?: boolean
+  timeoutMs?: number
 }
 
 /**
@@ -24,7 +25,7 @@ export interface RequestOptions extends RequestInit {
  * the Bearer token authorization header on private calls.
  */
 export async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-  const { isPrivate = true, headers: customHeaders, ...fetchOptions } = options
+  const { isPrivate = true, timeoutMs = 10000, headers: customHeaders, ...fetchOptions } = options
   const token = useAuthStore.getState().token
 
   const headers = new Headers(customHeaders || {})
@@ -41,10 +42,23 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
   const url = `${API_URL}${cleanEndpoint}`
 
-  const response = await fetch(url, {
-    ...fetchOptions,
-    headers,
-  })
+  const controller = new AbortController()
+  const callerSignal = fetchOptions.signal
+  const abortFromCaller = () => controller.abort()
+  if (callerSignal?.aborted) controller.abort()
+  else callerSignal?.addEventListener('abort', abortFromCaller, { once: true })
+  const timeoutId = globalThis.setTimeout(() => controller.abort(), timeoutMs)
+  let response: Response
+  try {
+    response = await fetch(url, {
+      ...fetchOptions,
+      headers,
+      signal: controller.signal,
+    })
+  } finally {
+    globalThis.clearTimeout(timeoutId)
+    callerSignal?.removeEventListener('abort', abortFromCaller)
+  }
 
   if (!response.ok) {
     const text = await response.text().catch(() => '')
@@ -140,22 +154,47 @@ export async function registerApi(data: {
 }
 
 // --- COURTS API ---
-export async function getCourts(): Promise<Court[]> {
+const COURTS_STORAGE_KEY = 'itelect4_local_courts'
+const DELETED_COURTS_KEY = 'itelect4_deleted_courts'
+function getDeletedCourtIds(): string[] {
+  try { return JSON.parse(window.localStorage.getItem(DELETED_COURTS_KEY) || '[]') as string[] } catch { return [] }
+}
+function markCourtDeleted(id: number | string): void {
+  try { const ids = new Set(getDeletedCourtIds()); ids.add(String(id)); window.localStorage.setItem(DELETED_COURTS_KEY, JSON.stringify([...ids])); window.localStorage.setItem(COURTS_STORAGE_KEY, JSON.stringify(readLocalCourts().filter((court) => String(court.id) !== String(id)))) } catch { /* Best effort for local-only mode. */ }
+}
+function readLocalCourts(): Court[] {
+  try { return JSON.parse(window.localStorage.getItem(COURTS_STORAGE_KEY) || '[]') as Court[] }
+  catch { return [] }
+}
+function saveLocalCourt(court: Court): void {
   try {
-    const courts = await request<Court[]>('/courts', { isPrivate: false })
-    return courts.map(parseCourt)
+    const courts = readLocalCourts().filter((item) => String(item.id) !== String(court.id))
+    window.localStorage.setItem(COURTS_STORAGE_KEY, JSON.stringify([court, ...courts]))
+  } catch { /* Storage may be full; the current session still receives the court. */ }
+}
+
+export async function getCourts(): Promise<Court[]> {
+  const localCourts = readLocalCourts()
+  try {
+    const serverCourts = (await request<Court[]>('/courts', { isPrivate: false })).map(parseCourt)
+    const byId = new Map(serverCourts.map((court) => [String(court.id), court]))
+    localCourts.forEach((court) => byId.set(String(court.id), { ...byId.get(String(court.id)), ...court }))
+    return [...byId.values()].filter((court) => !getDeletedCourtIds().includes(String(court.id)))
   } catch (err) {
-    console.warn('API /courts unreachable, falling back to local facility data:', err)
-    return FALLBACK_COURTS
+    console.warn('API /courts unreachable, using locally saved facility data:', err)
+    return [...localCourts, ...FALLBACK_COURTS.filter((court) => !localCourts.some((saved) => String(saved.id) === String(court.id)))].filter((court) => !getDeletedCourtIds().includes(String(court.id)))
   }
 }
 
 export async function getCourtById(id: number | string): Promise<Court> {
+  if (getDeletedCourtIds().includes(String(id))) throw new Error('This court has been removed.')
+  const local = readLocalCourts().find((court) => String(court.id) === String(id))
   try {
-    const court = await request<Court>(`/courts/${id}`, { isPrivate: false })
-    return parseCourt(court)
+    const court = parseCourt(await request<Court>(`/courts/${id}`, { isPrivate: false }))
+    return local ? { ...court, ...local } : court
   } catch (err) {
-    console.warn(`API /courts/${id} unreachable, falling back to local facility data:`, err)
+    console.warn(`API /courts/${id} unavailable, checking local facility data:`, err)
+    if (local) return local
     const match = FALLBACK_COURTS.find((c) => String(c.id) === String(id))
     if (match) return match
     throw err
@@ -163,12 +202,50 @@ export async function getCourtById(id: number | string): Promise<Court> {
 }
 
 export async function createCourt(input: CreateCourtInput): Promise<Court> {
-  const court = await request<Court>('/courts', {
-    method: 'POST',
-    isPrivate: true,
-    body: JSON.stringify(input),
-  })
-  return parseCourt(court)
+  try {
+    const response = await request<Court>('/courts', {
+      method: 'POST', isPrivate: true, body: JSON.stringify(input),
+    })
+    const court = { ...parseCourt(response), ...input }
+    saveLocalCourt(court)
+    return court
+  } catch (err) {
+    console.warn('API /courts POST failed, saving the new court in this browser:', err)
+    const court: Court = { id: Date.now(), ...input }
+    saveLocalCourt(court)
+    return court
+  }
+}
+
+export async function updateCourt(id: number | string, input: CreateCourtInput): Promise<Court> {
+  try {
+    const response = await request<Court>(`/courts/${id}`, {
+      method: 'PATCH', isPrivate: true, body: JSON.stringify(input),
+    })
+    const court = { ...parseCourt(response), ...input }
+    saveLocalCourt(court)
+    return court
+  } catch (err) {
+    console.warn(`API /courts/${id} PATCH failed; updating it in this browser only:`, err)
+    const existing = (await getCourts()).find((court) => String(court.id) === String(id))
+    if (!existing) throw new Error('Court could not be found to edit.')
+    const updated = { ...existing, ...input, id: existing.id }
+    saveLocalCourt(updated)
+    return updated
+  }
+}
+
+
+export async function deleteCourt(id: number | string): Promise<boolean> {
+  try {
+    await request<void>(`/courts/${id}`, { method: 'DELETE', isPrivate: true })
+    markCourtDeleted(id)
+    return true
+  } catch (err) {
+    console.warn(`API /courts/${id} DELETE failed; removing it from this browser only:`, err)
+    markCourtDeleted(id)
+    return false
+  }
 }
 
 const INITIAL_LOCAL_BOOKINGS: ApiBooking[] = [
@@ -214,6 +291,48 @@ const INITIAL_LOCAL_BOOKINGS: ApiBooking[] = [
   },
 ]
 
+function readSavedBookings(): ApiBooking[] {
+  try { const raw = window.localStorage.getItem('itelect4_local_bookings'); return raw ? JSON.parse(raw) as ApiBooking[] : [] } catch { return [] }
+}
+
+const LOCAL_BOOKING_STATUS_KEY = 'itelect4_local_booking_status_overrides'
+function readLocalBookingStatusOverrides(): Record<string, BookingStatus> {
+  try { return JSON.parse(window.localStorage.getItem(LOCAL_BOOKING_STATUS_KEY) || '{}') as Record<string, BookingStatus> } catch { return {} }
+}
+function writeLocalBookingStatusOverrides(overrides: Record<string, BookingStatus>): void {
+  try { window.localStorage.setItem(LOCAL_BOOKING_STATUS_KEY, JSON.stringify(overrides)) } catch { /* Browser storage can be unavailable. */ }
+}
+function setLocalBookingStatusOverride(id: number | string, status: BookingStatus): void {
+  writeLocalBookingStatusOverrides({ ...readLocalBookingStatusOverrides(), [String(id)]: status })
+}
+function clearLocalBookingStatusOverride(id: number | string): void {
+  const overrides = readLocalBookingStatusOverrides()
+  delete overrides[String(id)]
+  writeLocalBookingStatusOverrides(overrides)
+}
+const LOCAL_DELETED_BOOKINGS_KEY = 'itelect4_local_deleted_bookings'
+function readDeletedBookingIds(): string[] {
+  try { return JSON.parse(window.localStorage.getItem(LOCAL_DELETED_BOOKINGS_KEY) || '[]') as string[] } catch { return [] }
+}
+function markBookingDeleted(id: number | string): void {
+  const deleted = new Set(readDeletedBookingIds())
+  deleted.add(String(id))
+  try { window.localStorage.setItem(LOCAL_DELETED_BOOKINGS_KEY, JSON.stringify([...deleted])) } catch { /* Browser storage can be unavailable. */ }
+}function mergeBookingsWithLocalStatus(serverBookings: ApiBooking[]): ApiBooking[] {
+  const merged = new Map(readSavedBookings().map((booking) => [String(booking.id), booking]))
+  serverBookings.forEach((booking) => merged.set(String(booking.id), booking))
+  const deleted = new Set(readDeletedBookingIds())
+  for (const id of deleted) merged.delete(id)
+  const overrides = readLocalBookingStatusOverrides()
+  for (const [id, booking] of merged) {
+    const status = overrides[id]
+    if (!status) continue
+    if (booking.status === status) delete overrides[id]
+    else merged.set(id, { ...booking, status })
+  }
+  writeLocalBookingStatusOverrides(overrides)
+  return [...merged.values()]
+}
 export function getLocalStoredBookings(): ApiBooking[] {
   try {
     const raw = window.localStorage.getItem('itelect4_local_bookings')
@@ -237,15 +356,32 @@ export function saveLocalStoredBookings(bookings: ApiBooking[]): void {
 // --- BOOKINGS API ---
 export async function getBookings(): Promise<Booking[]> {
   try {
-    const rawBookings = await request<ApiBooking[]>('/bookings', { isPrivate: true })
-    if (Array.isArray(rawBookings) && rawBookings.length > 0) {
-      saveLocalStoredBookings(rawBookings)
-    }
-    return rawBookings.map(parseBooking)
+    const serverBookings = await request<ApiBooking[]>('/bookings', { isPrivate: true })
+    const merged = mergeBookingsWithLocalStatus(Array.isArray(serverBookings) ? serverBookings : [])
+    saveLocalStoredBookings(merged)
+    return merged.map(parseBooking)
   } catch (err) {
     console.warn('API /bookings unreachable, falling back to local stored reservations:', err)
-    return getLocalStoredBookings().map(parseBooking)
+    return mergeBookingsWithLocalStatus(getLocalStoredBookings()).map(parseBooking)
   }
+}
+// Admin endpoints return the complete facility queue. Older API deployments may
+// expose the same role-authorized collection at /bookings instead.
+export async function getAdminBookings(): Promise<Booking[]> {
+  let serverBookings: ApiBooking[] | null = null
+  try {
+    serverBookings = await request<ApiBooking[]>('/admin/bookings', { isPrivate: true })
+  } catch {
+    try { serverBookings = await request<ApiBooking[]>('/bookings', { isPrivate: true }) }
+    catch { serverBookings = null }
+  }
+  if (!serverBookings) {
+    console.warn('Admin booking endpoints unavailable; using browser reservations.')
+    return mergeBookingsWithLocalStatus(getLocalStoredBookings()).map(parseBooking)
+  }
+  const allBookings = mergeBookingsWithLocalStatus(serverBookings)
+  saveLocalStoredBookings(allBookings)
+  return allBookings.map(parseBooking)
 }
 
 export async function getBookingById(id: number | string): Promise<Booking> {
@@ -293,47 +429,89 @@ export async function createBooking(input: CreateBookingInput): Promise<Booking>
   }
 }
 
-export async function updateBookingStatus(id: number | string, status: BookingStatus): Promise<Booking> {
+export async function updateBookingStatus(id: number | string, status: BookingStatus): Promise<Booking & { localOnly?: boolean }> {
   try {
-    const rawBooking = await request<ApiBooking>(`/bookings/${id}`, {
+    const response = await request<ApiBooking>('/bookings/' + id, {
       method: 'PATCH',
       isPrivate: true,
       body: JSON.stringify({ status }),
     })
+    // Keep the accepted status until a later GET confirms the server has it.
+    // This prevents stale booking reads from undoing a successful UI action.
+    setLocalBookingStatusOverride(id, response.status ?? status)
+    const current = readSavedBookings()
+    const existing = current.find((booking) => String(booking.id) === String(id))
+    const responseId = (response as ApiBooking & { _id?: number | string })._id
+    const rawBooking = {
+      ...(existing || {}),
+      ...response,
+      id: response.id ?? responseId ?? existing?.id ?? Number(id),
+      status: response.status ?? status,
+    } as ApiBooking
+    const updated = current.some((booking) => String(booking.id) === String(id))
+      ? current.map((booking) => String(booking.id) === String(id) ? rawBooking : booking)
+      : [rawBooking, ...current]
+    saveLocalStoredBookings(updated)
     return parseBooking(rawBooking)
   } catch (err) {
-    console.warn(`API /bookings/${id} PATCH failed, updating reservation locally:`, err)
+    console.warn('API booking status update failed, updating reservation locally:', err)
+    setLocalBookingStatusOverride(id, status)
     const current = getLocalStoredBookings()
-    const updated = current.map((b) => (String(b.id) === String(id) ? { ...b, status } : b))
+    const updated = current.map((booking) => String(booking.id) === String(id) ? { ...booking, status } : booking)
     saveLocalStoredBookings(updated)
-    const target = updated.find((b) => String(b.id) === String(id))
-    if (target) return parseBooking(target)
+    const target = updated.find((booking) => String(booking.id) === String(id))
+    if (target) return { ...parseBooking(target), localOnly: true }
     throw err
   }
 }
-
-export async function deleteBooking(id: number | string): Promise<void> {
+export async function deleteBooking(id: number | string): Promise<{ localOnly: boolean }> {
+  let localOnly = false
   try {
-    await request<void>(`/bookings/${id}`, {
+    await request<void>('/bookings/' + id, {
       method: 'DELETE',
       isPrivate: true,
     })
   } catch (err) {
-    console.warn(`API /bookings/${id} DELETE failed, deleting from local storage:`, err)
-    const current = getLocalStoredBookings()
-    saveLocalStoredBookings(current.filter((b) => String(b.id) !== String(id)))
+    console.warn('API booking delete failed; deleting reservation from this browser:', err)
+    localOnly = true
   }
+  const current = getLocalStoredBookings()
+  saveLocalStoredBookings(current.filter((booking) => String(booking.id) !== String(id)))
+  clearLocalBookingStatusOverride(id)
+  markBookingDeleted(id)
+  return { localOnly }
+}
+// --- USERS API ---
+const LOCAL_USERS_KEY = 'itelect4_local_users'
+export function saveLocalStoredUser(user: User): void {
+  try {
+    const users = JSON.parse(window.localStorage.getItem(LOCAL_USERS_KEY) || '[]') as User[]
+    window.localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify([user, ...users.filter((item) => String(item.id) !== String(user.id))]))
+  } catch { /* Continue if browser storage is unavailable. */ }
+}
+function getLocalStoredUsers(): User[] {
+  try { return JSON.parse(window.localStorage.getItem(LOCAL_USERS_KEY) || '[]') as User[] }
+  catch { return [] }
 }
 
-// --- USERS API ---
-export async function getUsers(): Promise<User[]> {
+export async function getAdminUsers(): Promise<User[]> {
+  let serverUsers: User[]
   try {
-    const users = await request<User[]>('/users', { isPrivate: true })
-    return users.map(parseUser)
+    serverUsers = (await request<User[]>('/admin/users', { isPrivate: true })).map(parseUser)
   } catch {
-    return [
-      { id: 1, name: 'Ana Arriola', email: 'arriolaana@gmail.com', role: 'player', isActive: true },
-    ]
+    serverUsers = (await request<User[]>('/users', { isPrivate: true })).map(parseUser)
+  }
+  const byId = new Map(serverUsers.map((user) => [String(user.id), user]))
+  getLocalStoredUsers().forEach((user) => byId.set(String(user.id), { ...byId.get(String(user.id)), ...user }))
+  return [...byId.values()]
+}
+
+export async function getUsers(): Promise<User[]> {
+  try { return await getAdminUsers() }
+  catch {
+    const localUsers = getLocalStoredUsers()
+    if (localUsers.length) return localUsers
+    throw new Error('Could not load accounts. Check that the admin users API is available.')
   }
 }
 
@@ -349,4 +527,14 @@ export async function createUser(input: CreateUserInput): Promise<User> {
     body: JSON.stringify(input),
   })
   return parseUser(user)
+}
+
+// --- SESSION 11: AI booking readiness review ---
+export async function askAi(prompt: string): Promise<AiReview> {
+  return request<AiReview>('/ai', {
+    method: 'POST',
+    isPrivate: true,
+    timeoutMs: 60000,
+    body: JSON.stringify({ prompt }),
+  })
 }

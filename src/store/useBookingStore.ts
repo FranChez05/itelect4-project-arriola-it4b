@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { BookingStatus, type UserRole } from '../types'
 import type { Booking, Court, User } from '../types'
-import { getCourts, getBookings } from '../api/client'
+import { getCourts, getBookings, getAdminBookings } from '../api/client'
 import { useAuthStore } from './authStore'
+import { isCourtBookedOnDate } from '../lib/courtAvailability'
 
 export interface BookingStoreState {
   // Data State
@@ -25,6 +26,11 @@ export interface BookingStoreState {
   setSelectedDate: (date: string) => void
   addBooking: (courtId: number, dateStr: string) => boolean
   cancelBooking: (bookingId: number) => void
+  removeBooking: (bookingId: number) => void
+  setBookingStatus: (bookingId: number, status: BookingStatus) => void
+  addCourt: (court: Court) => void
+  updateCourt: (court: Court) => void
+  removeCourt: (courtId: number) => void
   toggleDarkMode: () => void
   setStatusMessage: (msg: string) => void
 }
@@ -47,10 +53,8 @@ export const useBookingStore = create<BookingStoreState>((set, get) => ({
     const authUser = authState.user
     set({ isLoading: true, statusMessage: 'Fetching data from API server...' })
     try {
-      const [courtsData, bookingsData] = await Promise.all([
-        getCourts(),
-        getBookings(),
-      ])
+      const bookingsRequest = authUser?.role === 'admin' ? getAdminBookings() : getBookings()
+      const [courtsData, bookingsData] = await Promise.all([getCourts(), bookingsRequest])
       const activeUser: User = authUser
         ? {
             id: typeof authUser.id === 'number' ? authUser.id : (Number(authUser.id) || 1),
@@ -131,8 +135,8 @@ export const useBookingStore = create<BookingStoreState>((set, get) => ({
       return false
     }
 
-    if (!court.isAvailable) {
-      set({ statusMessage: `Cannot book: ${court.name} is currently unavailable` })
+    if (!court.isAvailable || isCourtBookedOnDate(bookings, court.id, dateStr)) {
+      set({ statusMessage: `Cannot book: ${court.name} is unavailable on ${dateStr}` })
       return false
     }
 
@@ -141,7 +145,7 @@ export const useBookingStore = create<BookingStoreState>((set, get) => ({
       userId: user.id,
       courtId: court.id,
       bookingDate: new Date(`${dateStr}T12:00:00`),
-      durationHours: 2,
+      durationHours: 9,
       status: BookingStatus.Pending,
     }
 
@@ -153,6 +157,22 @@ export const useBookingStore = create<BookingStoreState>((set, get) => ({
     return true
   },
 
+  setBookingStatus: (bookingId, status) => {
+    set((state) => ({ bookings: state.bookings.map((b) => String(b.id) === String(bookingId) ? { ...b, status } : b), statusMessage: `Booking #${bookingId} ${status}` }))
+  },
+
+  addCourt: (court) => {
+    set((state) => ({ courts: [court, ...state.courts.filter((item) => item.id !== court.id)], statusMessage: `${court.name} added to court directory` }))
+  },
+
+  updateCourt: (court) => {
+    set((state) => ({ courts: state.courts.map((item) => item.id === court.id ? court : item), statusMessage: `${court.name} updated` }))
+  },
+
+  removeCourt: (courtId) => {
+    set((state) => ({ courts: state.courts.filter((court) => court.id !== courtId), statusMessage: `Court #${courtId} removed` }))
+  },
+
   cancelBooking: (bookingId: number) => {
     set((state) => ({
       bookings: state.bookings.map((b) =>
@@ -162,6 +182,12 @@ export const useBookingStore = create<BookingStoreState>((set, get) => ({
     }))
   },
 
+  removeBooking: (bookingId: number) => {
+    set((state) => ({
+      bookings: state.bookings.filter((booking) => String(booking.id) !== String(bookingId)),
+      statusMessage: 'Booking #' + bookingId + ' was deleted',
+    }))
+  },
   toggleDarkMode: () => {
     const nextDark = !get().isDarkMode
     set({ isDarkMode: nextDark })
