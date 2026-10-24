@@ -28,6 +28,7 @@ export interface BookingStoreState {
   cancelBooking: (bookingId: number) => void
   removeBooking: (bookingId: number) => void
   setBookingStatus: (bookingId: number, status: BookingStatus) => void
+  upsertBooking: (booking: Booking) => void
   addCourt: (court: Court) => void
   updateCourt: (court: Court) => void
   removeCourt: (courtId: number) => void
@@ -55,51 +56,30 @@ export const useBookingStore = create<BookingStoreState>((set, get) => ({
     try {
       const bookingsRequest = authUser?.role === 'admin' ? getAdminBookings() : getBookings()
       const [courtsData, bookingsData] = await Promise.all([getCourts(), bookingsRequest])
-      const activeUser: User = authUser
-        ? {
-            id: typeof authUser.id === 'number' ? authUser.id : (Number(authUser.id) || 1),
-            name: authUser.name || authState.userName || 'Player',
-            email: authUser.email || 'player@example.com',
-            role: (authUser.role as UserRole) || 'player',
-            isActive: true,
-          }
-        : {
-            id: 1,
-            name: authState.userName || 'Player',
-            email: 'player@example.com',
-            role: 'player',
-            isActive: true,
-          }
-
-      set({
-        courts: courtsData,
-        bookings: bookingsData,
-        user: activeUser,
-        isLoading: false,
-        statusMessage: 'Data loaded successfully from API!',
-      })
+      const activeUser: User | null = authUser ? {
+        id: typeof authUser.id === 'number' ? authUser.id : (Number(authUser.id) || 1),
+        name: authUser.name || authState.userName || 'Player',
+        email: authUser.email || 'player@example.com',
+        role: (authUser.role as UserRole) || 'player',
+        isActive: true,
+      } : null
+      set({ courts: courtsData, bookings: bookingsData, user: activeUser, isLoading: false, statusMessage: 'Data loaded successfully from API!' })
     } catch (err) {
-      set({
-        courts: [
-          { id: 1, name: 'Court A - Main Arena', location: 'Main Gym (Wood Floor)', isAvailable: true },
-          { id: 2, name: 'Court B - Side Arena', location: 'Main Gym (Rubber Floor)', isAvailable: true },
-          { id: 3, name: 'Court C - VIP Hall', location: 'VIP Complex (AC Room)', isAvailable: false },
-          { id: 4, name: 'Court D - Outdoor Arena', location: 'East Annex (Synthetics)', isAvailable: true },
-        ],
-        bookings: [
-          { id: 102, userId: 1, courtId: 2, bookingDate: new Date('2026-08-23T12:00:00.000Z'), durationHours: 1, status: BookingStatus.Cancelled },
-          { id: 103, userId: 1, courtId: 1, bookingDate: new Date('2026-08-30T12:00:00.000Z'), durationHours: 2, status: BookingStatus.Cancelled },
-          { id: 105, userId: 1, courtId: 2, bookingDate: new Date('2026-09-04T12:00:00.000Z'), durationHours: 2, status: BookingStatus.Approved },
-          { id: 106, userId: 1, courtId: 1, bookingDate: new Date('2026-09-04T12:00:00.000Z'), durationHours: 2, status: BookingStatus.Pending },
-          { id: 107, userId: 1, courtId: 1, bookingDate: new Date('2026-09-05T12:00:00.000Z'), durationHours: 2, status: BookingStatus.Pending },
-        ],
-        user: { id: 1, name: 'Ana Arriola', email: 'arriolaana@gmail.com', role: 'player', isActive: true },
-        isLoading: false,
-        statusMessage: `API Server offline — using cached data (${err instanceof Error ? err.message : 'offline'})`,
-      })
+      console.warn('Could not load from API server, falling back to facility storage:', err)
+      try {
+        const fallbackCourts = await getCourts()
+        const fallbackBookings = await getAdminBookings()
+        set({
+          courts: fallbackCourts,
+          bookings: fallbackBookings,
+          isLoading: false,
+          statusMessage: 'Loaded reservation data from local facility storage.',
+        })
+      } catch {
+        set({ isLoading: false, statusMessage: 'API unavailable.' })
+      }
     }
   },
-
   setSearchQuery: (query: string) => {
     set({ searchQuery: query })
     if (query.trim()) {
@@ -145,7 +125,7 @@ export const useBookingStore = create<BookingStoreState>((set, get) => ({
       userId: user.id,
       courtId: court.id,
       bookingDate: new Date(`${dateStr}T12:00:00`),
-      durationHours: 9,
+      durationHours: 2,
       status: BookingStatus.Pending,
     }
 
@@ -160,6 +140,8 @@ export const useBookingStore = create<BookingStoreState>((set, get) => ({
   setBookingStatus: (bookingId, status) => {
     set((state) => ({ bookings: state.bookings.map((b) => String(b.id) === String(bookingId) ? { ...b, status } : b), statusMessage: `Booking #${bookingId} ${status}` }))
   },
+
+  upsertBooking: (booking) => set((state) => ({ bookings: [booking, ...state.bookings.filter((item) => String(item.id) !== String(booking.id))] })),
 
   addCourt: (court) => {
     set((state) => ({ courts: [court, ...state.courts.filter((item) => item.id !== court.id)], statusMessage: `${court.name} added to court directory` }))
@@ -176,7 +158,7 @@ export const useBookingStore = create<BookingStoreState>((set, get) => ({
   cancelBooking: (bookingId: number) => {
     set((state) => ({
       bookings: state.bookings.map((b) =>
-        b.id === bookingId ? { ...b, status: BookingStatus.Cancelled } : b
+        String(b.id) === String(bookingId) ? { ...b, status: BookingStatus.Cancelled } : b
       ),
       statusMessage: `Booking #${bookingId} was marked as cancelled`,
     }))

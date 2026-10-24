@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createBooking, getBookings } from '../api/client'
+import { createBooking, getBookings, saveLocalStoredUser } from '../api/client'
 import { useBookingStore } from '../store/useBookingStore'
+import { useAuthStore } from '../store/authStore'
 import useToggle from '../hooks/useToggle'
 import { BookingStatus } from '../types'
 import { bookingSchema, type BookingFormData } from '../schemas/bookingSchema'
@@ -26,7 +27,7 @@ const BookingPage: React.FC = () => {
 
   const user = useBookingStore((state) => state.user)
   const courts = useBookingStore((state) => state.courts)
-  const addBooking = useBookingStore((state) => state.addBooking)
+  const upsertBooking = useBookingStore((state) => state.upsertBooking)
   const selectedCourtId = useBookingStore((state) => state.selectedCourtId)
   const { data: bookings = [] } = useQuery({ queryKey: ['bookings'], queryFn: getBookings, refetchInterval: 15000 })
   const selectedDate = useBookingStore((state) => state.selectedDate)
@@ -38,12 +39,14 @@ const BookingPage: React.FC = () => {
   // useMutation that POSTs a new booking payload and calls invalidateQueries in onSuccess
   const bookingMutation = useMutation({
     mutationFn: (newBooking: CreateBookingInput) => createBooking(newBooking),
-    onSuccess: () => {
+    onSuccess: (savedBooking) => {
+      upsertBooking(savedBooking)
       // Invalidate queries so TanStack Query refetches updated collections
       queryClient.invalidateQueries({ queryKey: ['bookings'] })
       queryClient.invalidateQueries({ queryKey: ['courts'] })
       navigate('/my-bookings')
     },
+    onError: (error) => useBookingStore.getState().setStatusMessage(error instanceof Error ? error.message : 'Booking could not be saved to the server.'),
   })
 
   const getTodayDateStr = () => new Date().toISOString().slice(0, 10)
@@ -59,7 +62,7 @@ const BookingPage: React.FC = () => {
     defaultValues: {
       courtId: selectedCourtId || courts[0]?.id || 1,
       bookingDate: selectedDate || getTodayDateStr(),
-      durationHours: 9,
+      durationHours: 2,
     },
   })
 
@@ -74,6 +77,7 @@ const BookingPage: React.FC = () => {
 
   const watchedCourtId = watch('courtId')
   const watchedDate = watch('bookingDate')
+  const watchedDuration = watch('durationHours')
   const selectedCourt = courts.find((c) => c.id === watchedCourtId) ?? courts[0]
   const selectedCourtBooked = !!selectedCourt && isCourtBookedOnDate(bookings, selectedCourt.id, watchedDate)
   const selectedCourtAvailable = !!selectedCourt?.isAvailable && !selectedCourtBooked
@@ -101,17 +105,29 @@ const BookingPage: React.FC = () => {
       useBookingStore.getState().setStatusMessage(`${court.name} is already booked on ${data.bookingDate}. Please choose another court or date.`)
       return
     }
-    if (!addBooking(data.courtId, data.bookingDate)) return
+
+    const authUser = useAuthStore.getState().user
+    const studentId = authUser?.id ? (typeof authUser.id === 'number' ? authUser.id : (Number(authUser.id) || 1)) : (user?.id ?? 1)
+    
+    // Ensure player profile is known so admin dashboard displays student name and email
+    if (authUser && authUser.email) {
+      saveLocalStoredUser({
+        id: studentId,
+        name: authUser.name || authUser.email.split('@')[0] || 'Student Player',
+        email: authUser.email,
+        role: 'player',
+        isActive: true,
+      })
+    }
 
     // Execute POST mutation with Pending status
     bookingMutation.mutate({
-      userId: user?.id ?? 1,
+      userId: studentId,
       courtId: data.courtId,
       bookingDate: `${data.bookingDate}T12:00:00.000Z`,
       durationHours: data.durationHours,
       status: BookingStatus.Pending,
     })
-
   }
 
   return (
@@ -256,10 +272,11 @@ const BookingPage: React.FC = () => {
               </Label>
               <Input
                 id="booking-duration"
-                type="text"
-                disabled
-                value="9 Hours"
-                className="w-full rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-600 px-4 py-3 text-xs font-bold text-slate-600 dark:text-slate-200 cursor-not-allowed"
+                type="number"
+                min={1}
+                max={8}
+                {...register("durationHours", { valueAsNumber: true })}
+                className="w-full rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-3 text-xs font-bold text-slate-700 dark:text-slate-200"
               />
               {errors.durationHours && (
                 <p className="mt-1 text-xs font-bold text-rose-600 dark:text-rose-400">
@@ -296,6 +313,7 @@ const BookingPage: React.FC = () => {
             >
               {bookingMutation.isPending ? '⏳ Submitting Reservation...' : selectedCourtAvailable ? '🎟️ Confirm Reservation' : 'Court unavailable for this date'}
             </Button>
+            {bookingMutation.isError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-700 dark:bg-rose-950/40 dark:text-rose-200">{bookingMutation.error instanceof Error ? bookingMutation.error.message : "The booking could not be saved."}</p>}
           </form>
         </div>
 
@@ -367,7 +385,7 @@ const BookingPage: React.FC = () => {
 
                 <div className="border-t-2 border-dashed border-slate-200 dark:border-slate-600 my-2 pt-2 flex items-center justify-between">
                   <span className="font-bold text-slate-400 uppercase tracking-widest text-[9px]">DURATION</span>
-                  <span className="font-black text-[#078A63] dark:text-emerald-400">9 Hours</span>
+                  <span className="font-black text-[#078A63] dark:text-emerald-400">{watchedDuration} hours</span>
                 </div>
 
                 <div className="flex items-center justify-between">

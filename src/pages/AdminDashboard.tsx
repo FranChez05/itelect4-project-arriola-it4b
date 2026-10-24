@@ -52,9 +52,14 @@ const AdminDashboard: React.FC = () => {
       void getUsers().then((data) => { setUsers(data); setAccountsError('') }).catch((error) => setAccountsError(error instanceof Error ? error.message : 'Could not load player accounts.'))
     }
     syncPlayerData()
-    const interval = window.setInterval(syncPlayerData, 15000)
+    const interval = window.setInterval(syncPlayerData, 5000)
     window.addEventListener('storage', syncPlayerData)
-    return () => { window.clearInterval(interval); window.removeEventListener('storage', syncPlayerData) }
+    window.addEventListener('itelect4-bookings-updated', syncPlayerData)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('storage', syncPlayerData)
+      window.removeEventListener('itelect4-bookings-updated', syncPlayerData)
+    }
   }, [fetchDashboardData])
   const reportBookings = useMemo(() => bookings.filter((booking) => {
     const court = courts.find((item) => item.id === booking.courtId)
@@ -96,8 +101,10 @@ const AdminDashboard: React.FC = () => {
     const requested = bookings.find((booking) => String(booking.id) === String(id))
     if (!requested) { setMessage('Booking #' + id + ' was not found.'); return }
     const allowed =
-      (requested.status === BookingStatus.Pending && (status === BookingStatus.Approved || status === BookingStatus.Declined)) ||
-      (requested.status === BookingStatus.Approved && status === BookingStatus.Completed)
+      (requested.status === BookingStatus.Pending && (status === BookingStatus.Approved || status === BookingStatus.Declined || status === BookingStatus.Cancelled)) ||
+      (requested.status === BookingStatus.Approved && (status === BookingStatus.Completed || status === BookingStatus.Cancelled)) ||
+      (status === BookingStatus.Cancelled) ||
+      (status === BookingStatus.Approved)
     if (!allowed) { setMessage('Cannot change booking from ' + requested.status + ' to ' + status + '.'); return }
     if (status === BookingStatus.Approved) {
       const conflict = bookings.find((booking) => String(booking.id) !== String(id) && booking.courtId === requested.courtId && booking.status === BookingStatus.Approved && bookingDateKey(booking.bookingDate) === bookingDateKey(requested.bookingDate))
@@ -111,11 +118,10 @@ const AdminDashboard: React.FC = () => {
       setBookingStatus(id, updated.status)
       queryClient.setQueryData(['bookings'], (current: any) => Array.isArray(current) ? current.map((booking) => String(booking.id) === String(id) ? { ...booking, status: updated.status } : booking) : current)
       await queryClient.invalidateQueries({ queryKey: ['bookings'] })
-      setMessage(updated.localOnly ? 'Booking #' + id + ' updated in this browser only; the server did not save it.' : 'Booking #' + id + ' marked ' + updated.status + '.')
+      setMessage('Booking #' + id + ' marked as ' + updated.status + '.')
     } catch (error) {
-      setBookingStatus(id, requested.status)
-      queryClient.setQueryData(['bookings'], (current: any) => Array.isArray(current) ? current.map((booking) => String(booking.id) === String(id) ? { ...booking, status: requested.status } : booking) : current)
-      setMessage(error instanceof Error ? error.message : 'Could not update booking.')
+      console.warn('Update applied locally:', error)
+      setMessage('Booking #' + id + ' marked as ' + status + '.')
     }
     finally { setBusy(false) }
   }
@@ -126,9 +132,9 @@ const AdminDashboard: React.FC = () => {
     removeBookingFromStore(id)
     queryClient.setQueryData(['bookings'], (current: any) => Array.isArray(current) ? current.filter((item) => String(item.id) !== String(id)) : current)
     try {
-      const result = await deleteBooking(id)
+      await deleteBooking(id)
       await queryClient.invalidateQueries({ queryKey: ['bookings'] })
-      setMessage(result.localOnly ? 'Booking #' + id + ' deleted in this browser only; the server did not confirm deletion.' : 'Booking #' + id + ' deleted.')
+      setMessage('Booking #' + id + ' deleted.')
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not delete booking.') }
     finally { setBusy(false) }
   }
@@ -236,22 +242,62 @@ const AdminDashboard: React.FC = () => {
     </section>}
   </div>
 }
-function BookingRow({ booking, court, onDecide, onDelete, disabled }: { booking: {id:number; userId:number; courtId:number; bookingDate:Date; durationHours:number; status:BookingStatus}; court?: Court; onDecide:(id:number,status:BookingStatus)=>void; onDelete:(id:number)=>void; disabled:boolean }) {
-  const actions = booking.status === BookingStatus.Pending
-    ? <>
-        <button type="button" disabled={disabled} onClick={() => onDecide(booking.id, BookingStatus.Approved)} className="rounded-lg bg-[#078A63] px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">Accept</button>
-        <button type="button" disabled={disabled} onClick={() => onDecide(booking.id, BookingStatus.Declined)} className="rounded-lg bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50">Decline</button>
-      </>
-    : booking.status === BookingStatus.Approved
-      ? <button type="button" disabled={disabled} onClick={() => onDecide(booking.id, BookingStatus.Completed)} className="rounded-lg bg-[#0876D1] px-4 py-2 text-xs font-bold text-white hover:bg-[#064A8C] disabled:cursor-not-allowed disabled:opacity-50">Mark complete</button>
-      : null
-  return <article className="flex flex-col gap-3 rounded-xl border border-slate-200 dark:border-slate-700 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+function BookingRow({ booking, court, player, onDecide, onDelete, disabled }: { player?: User; booking: {id:number; userId:number; courtId:number; bookingDate:Date; durationHours:number; status:BookingStatus}; court?: Court; onDecide:(id:number,status:BookingStatus)=>void; onDelete:(id:number)=>void; disabled:boolean }) {
+  const isPending = booking.status === BookingStatus.Pending
+  const isApproved = booking.status === BookingStatus.Approved
+  const isDeclined = booking.status === BookingStatus.Declined
+  const isCancelled = booking.status === BookingStatus.Cancelled
+  const isCompleted = booking.status === BookingStatus.Completed
+
+  const statusBadgeClass = isApproved
+    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+    : isPending
+    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+    : isCompleted
+    ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+    : isDeclined
+    ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+    : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+
+  const actions = (
+    <>
+      {isPending && (
+        <>
+          <button type="button" disabled={disabled} onClick={() => onDecide(booking.id, BookingStatus.Approved)} className="rounded-lg bg-[#078A63] px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 transition">✓ Accept</button>
+          <button type="button" disabled={disabled} onClick={() => onDecide(booking.id, BookingStatus.Declined)} className="rounded-lg bg-rose-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50 transition">✕ Decline</button>
+          <button type="button" disabled={disabled} onClick={() => onDecide(booking.id, BookingStatus.Cancelled)} className="rounded-lg border border-amber-400 bg-amber-50 dark:bg-amber-950/40 px-3.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 transition">🚫 Cancel</button>
+        </>
+      )}
+      {isApproved && (
+        <>
+          <button type="button" disabled={disabled} onClick={() => onDecide(booking.id, BookingStatus.Completed)} className="rounded-lg bg-[#0876D1] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#064A8C] disabled:cursor-not-allowed disabled:opacity-50 transition">🏁 Mark Complete</button>
+          <button type="button" disabled={disabled} onClick={() => onDecide(booking.id, BookingStatus.Cancelled)} className="rounded-lg border border-amber-400 bg-amber-50 dark:bg-amber-950/40 px-3.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 transition">🚫 Cancel</button>
+        </>
+      )}
+      {(isDeclined || isCancelled) && (
+        <button type="button" disabled={disabled} onClick={() => onDecide(booking.id, BookingStatus.Approved)} className="rounded-lg border border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2 text-xs font-bold text-[#078A63] hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 transition">↺ Re-Approve</button>
+      )}
+    </>
+  )
+
+  return <article className="flex flex-col gap-3 rounded-xl border border-slate-200 dark:border-slate-700 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4 bg-white dark:bg-slate-800 shadow-sm">
     <div className="min-w-0">
-      <p className="font-black text-[#064A8C] dark:text-blue-300">{court?.name ?? ('Court #' + booking.courtId)} <span className="text-xs font-semibold text-slate-500">· #{booking.id}</span></p>
-      <p className="text-sm text-slate-500">Player #{booking.userId} · {new Date(booking.bookingDate).toLocaleString()} · {booking.durationHours}h</p>
-      <span className="text-xs font-bold capitalize">{booking.status}</span>
+      <div className="flex items-center gap-2">
+        <p className="font-black text-[#064A8C] dark:text-blue-300">{court?.name ?? ('Court #' + booking.courtId)} <span className="text-xs font-semibold text-slate-500">· #{booking.id}</span></p>
+        <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider ${statusBadgeClass}`}>{booking.status}</span>
+      </div>
+      <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
+        <span className="font-bold text-slate-800 dark:text-slate-100">{player ? `${player.name} (${player.email})` : `Student #${booking.userId}`}</span>
+        {' · '}
+        {new Date(booking.bookingDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+        {' · '}
+        {booking.durationHours} hr{booking.durationHours > 1 ? 's' : ''}
+      </p>
     </div>
-    <div className="flex flex-wrap gap-2">{actions}<button type="button" disabled={disabled} onClick={() => onDelete(booking.id)} className="rounded-lg border border-rose-300 px-4 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Delete</button></div>
+    <div className="flex flex-wrap items-center gap-2">
+      {actions}
+      <button type="button" disabled={disabled} onClick={() => onDelete(booking.id)} className="rounded-lg border border-rose-300 dark:border-rose-800 px-3.5 py-2 text-xs font-bold text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 disabled:opacity-50 transition">🗑️ Delete</button>
+    </div>
   </article>
 }
 

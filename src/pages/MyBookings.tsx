@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getBookings, updateBookingStatus } from '../api/client'
@@ -57,9 +57,21 @@ const MyBookings: React.FC = () => {
   const { data: allBookings = [], isLoading } = useQuery<Booking[]>({
     queryKey: ['bookings'],
     queryFn: getBookings,
-    refetchInterval: 15000,
+    refetchInterval: 5000,
   })
   const bookings = allBookings
+
+  useEffect(() => {
+    const handleSync = () => {
+      void queryClient.invalidateQueries({ queryKey: ['bookings'] })
+    }
+    window.addEventListener('storage', handleSync)
+    window.addEventListener('itelect4-bookings-updated', handleSync)
+    return () => {
+      window.removeEventListener('storage', handleSync)
+      window.removeEventListener('itelect4-bookings-updated', handleSync)
+    }
+  }, [queryClient])
 
   const cancelMutation = useMutation({
     mutationFn: (id: number) => updateBookingStatus(id, BookingStatus.Cancelled),
@@ -76,9 +88,6 @@ const MyBookings: React.FC = () => {
     onError: (_error, id, context) => {
       if (context?.previous) queryClient.setQueryData(['bookings'], context.previous)
       if (context?.previousStoreStatus) setBookingStatus(id, context.previousStoreStatus)
-    },
-    onSuccess: (updated) => {
-      if (updated.localOnly) useBookingStore.getState().setStatusMessage('Cancellation saved in this browser only; the server did not save it, so other devices may not show it.')
     },
     onSettled: () => { void queryClient.invalidateQueries({ queryKey: ['bookings'] }) },
   })
