@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useAuthStore } from '../store/authStore'
 import { useBookingStore } from '../store/useBookingStore'
 import { registerSchema, type RegisterFormData } from '../schemas/registerSchema'
-import { registerApi, loginApi } from '../api/client'
+import { registerApi, loginApi, saveLocalStoredUser } from '../api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -40,6 +40,8 @@ const Register: React.FC = () => {
         password: data.password,
         role: data.role,
       })
+
+      saveLocalStoredUser({ id: Number(regResponse.id) || Date.now(), name: regResponse.name || data.name, email: data.email, role: (regResponse.role || data.role) as 'player' | 'admin', isActive: true })
 
       // Log in automatically after successful registration
       const loginResponse = await loginApi({

@@ -13,18 +13,22 @@ const Layout: React.FC = () => {
 
   const token = useAuthStore((state) => state.token)
   const logout = useAuthStore((state) => state.logout)
+  const role = useAuthStore((state) => state.user?.role ?? 'player')
 
   // Trigger data fetch on component mount and whenever auth token changes (login/logout)
   useEffect(() => {
     fetchData()
   }, [token, fetchData])
 
-  const navItems = [
-    { label: 'Home', path: '/' },
-    { label: 'Courts', path: '/courts' },
-    { label: 'Booking', path: '/booking' },
-    { label: 'My Bookings', path: '/my-bookings', badge: bookingsCount },
-  ]
+  const navItems = role === 'admin'
+    ? [{ label: 'Admin Dashboard', path: '/admin' }, { label: 'AI Review', path: '/ai-review' }]
+    : [
+        { label: 'Home', path: '/' },
+        { label: 'Courts', path: '/courts' },
+        { label: 'Booking', path: '/booking' },
+        { label: 'My Bookings', path: '/my-bookings', badge: bookingsCount },
+        { label: 'AI Review', path: '/ai-review' },
+      ]
 
   return (
     <div className={isDarkMode ? 'dark' : ''}>
@@ -47,13 +51,13 @@ const Layout: React.FC = () => {
 
               {/* Layout <nav> Navigation Links - Conditionally rendered when logged in */}
               {token && (
-                <nav className="flex items-center gap-1 sm:gap-2 bg-[#003770] dark:bg-slate-900/80 p-1.5 rounded-xl border border-blue-400/20">
+                <nav className="flex max-w-full items-center gap-1 overflow-x-auto sm:gap-2 bg-[#003770] dark:bg-slate-900/80 p-1.5 rounded-xl border border-blue-400/20">
                   {navItems.map((item) => (
                     <NavLink
                       key={item.path}
                       to={item.path}
                       className={({ isActive }) =>
-                        `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 ${isActive
+                        `flex shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 ${isActive
                           ? 'bg-[#0876D1] text-white shadow-md scale-105'
                           : 'text-blue-100 hover:text-white hover:bg-white/10'
                         }`
@@ -77,7 +81,7 @@ const Layout: React.FC = () => {
                     type="button"
                     onClick={logout}
                     className="flex items-center gap-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 px-3 py-1.5 text-xs font-black uppercase tracking-wider text-white shadow-md transition-all cursor-pointer"
-                    title="Log Out Player Session"
+                    title={`Log Out ${role} Session`}
                   >
                     🚪 Logout
                   </button>

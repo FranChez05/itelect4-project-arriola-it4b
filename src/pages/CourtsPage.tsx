@@ -6,7 +6,7 @@ interface CourtsPageProps {
   onSelectCourt?: (courtId: number) => void
 }
 
-export interface DetailedCourt extends Court {
+export interface DetailedCourt extends Omit<Court, 'amenities' | 'description'> {
   hourlyRate: number
   floorType: string
   lighting: string

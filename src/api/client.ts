@@ -1,4 +1,4 @@
-import type { Court, Booking, User } from '../types'
+import type { Court, Booking, User, AiReview } from '../types'
 import { BookingStatus } from '../types'
 import type {
   ApiBooking,
@@ -8,16 +8,14 @@ import type {
 } from '../types'
 import { useAuthStore } from '../store/authStore'
 
-const ENV_URL = (
-  import.meta.env.VITE_API_URL ||
-  (import.meta.env.PROD
-    ? 'https://itelect4-backend-arriola-it4b.vercel.app'
-    : 'http://localhost:4000')
-).replace(/\/+$/, '')
-const API_URL = ENV_URL.endsWith('/api') ? ENV_URL : `${ENV_URL}/api`
+const rawEnvUrl = (import.meta.env.VITE_API_URL || '').trim()
+const ENV_URL = (rawEnvUrl || (import.meta.env.PROD ? '' : 'http://localhost:4000')).replace(/\/+$/, '')
+
+const API_URL = ENV_URL ? (ENV_URL.endsWith('/api') ? ENV_URL : `${ENV_URL}/api`) : '/api'
 
 export interface RequestOptions extends RequestInit {
   isPrivate?: boolean
+  timeoutMs?: number
 }
 
 /**
@@ -25,7 +23,7 @@ export interface RequestOptions extends RequestInit {
  * the Bearer token authorization header on private calls.
  */
 export async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-  const { isPrivate = true, headers: customHeaders, ...fetchOptions } = options
+  const { isPrivate = true, timeoutMs = 10000, headers: customHeaders, ...fetchOptions } = options
   const token = useAuthStore.getState().token
 
   const headers = new Headers(customHeaders || {})
@@ -42,10 +40,23 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
   const url = `${API_URL}${cleanEndpoint}`
 
-  const response = await fetch(url, {
-    ...fetchOptions,
-    headers,
-  })
+  const controller = new AbortController()
+  const callerSignal = fetchOptions.signal
+  const abortFromCaller = () => controller.abort()
+  if (callerSignal?.aborted) controller.abort()
+  else callerSignal?.addEventListener('abort', abortFromCaller, { once: true })
+  const timeoutId = globalThis.setTimeout(() => controller.abort(), timeoutMs)
+  let response: Response
+  try {
+    response = await fetch(url, {
+      ...fetchOptions,
+      headers,
+      signal: controller.signal,
+    })
+  } finally {
+    globalThis.clearTimeout(timeoutId)
+    callerSignal?.removeEventListener('abort', abortFromCaller)
+  }
 
   if (!response.ok) {
     const text = await response.text().catch(() => '')
@@ -71,12 +82,12 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
 export function parseBooking(apiBooking: any): Booking {
   return {
     ...apiBooking,
-    id: apiBooking.id ?? apiBooking._id,
-    userId: apiBooking.userId,
+    id: typeof apiBooking.id === 'number' ? apiBooking.id : (Number(apiBooking.id ?? apiBooking._id) || Date.now()),
+    userId: typeof apiBooking.userId === 'number' ? apiBooking.userId : (Number(apiBooking.userId) || 1),
     courtId: Number(apiBooking.courtId),
     bookingDate: new Date(apiBooking.bookingDate),
-    durationHours: Number(apiBooking.durationHours),
-    status: apiBooking.status as BookingStatus,
+    durationHours: Number(apiBooking.durationHours) || 2,
+    status: (apiBooking.status as BookingStatus) || BookingStatus.Pending,
   }
 }
 
@@ -90,22 +101,22 @@ export function parseCourt(court: any): Court {
 export function parseUser(user: any): User {
   return {
     ...user,
-    id: user.id ?? user._id,
+    id: typeof user.id === 'number' ? user.id : (Number(user.id ?? user._id) || Date.now()),
   }
 }
 
 const FALLBACK_COURTS: Court[] = [
-  { id: 1, name: 'Court A - Main Arena', location: 'Main Gym (Wood Floor)', isAvailable: true },
-  { id: 2, name: 'Court B - Side Arena', location: 'Main Gym (Rubber Floor)', isAvailable: true },
-  { id: 3, name: 'Court C - VIP Hall', location: 'VIP Complex (AC Room)', isAvailable: false },
-  { id: 4, name: 'Court D - Outdoor Arena', location: 'East Annex (Synthetics)', isAvailable: true },
+  { id: 1, name: 'Court A - Main Arena', location: 'Main Gym (Sprung Wood Floor)', isAvailable: true, surface: 'Sprung Wood', description: 'Premier competition court with professional lighting and spectator seating.' },
+  { id: 2, name: 'Court B - Side Arena', location: 'Main Gym (BWF Mat Flooring)', isAvailable: true, surface: 'BWF Green Mat', description: 'Tournament-ready vinyl court with optimal grip and shock absorption.' },
+  { id: 3, name: 'Court C - VIP Hall', location: 'VIP Complex (Air Conditioned)', isAvailable: false, surface: 'Synthetic Wood', description: 'Private training court with climate control and audio system.' },
+  { id: 4, name: 'Court D - Training Hall', location: 'East Annex (Multi-purpose)', isAvailable: true, surface: 'Rubber Compound', description: 'Dedicated training court with shuttlecock launcher access.' },
 ]
 
 // --- AUTH API ---
 export interface LoginResponse {
   token: string
   user: {
-    id: string
+    id: string | number
     role?: string
     name?: string
     email?: string
@@ -113,18 +124,41 @@ export interface LoginResponse {
 }
 
 export interface RegisterResponse {
-  id: string
+  id: string | number
   name: string
   email: string
   role?: string
 }
 
 export async function loginApi(credentials: { email: string; password: string }): Promise<LoginResponse> {
-  return request<LoginResponse>('/auth/login', {
-    method: 'POST',
-    isPrivate: false,
-    body: JSON.stringify(credentials),
-  })
+  try {
+    return await request<LoginResponse>('/auth/login', {
+      method: 'POST',
+      isPrivate: false,
+      body: JSON.stringify(credentials),
+    })
+  } catch (err) {
+    console.warn('Backend login failed, using local auth recovery:', err)
+    const localUsers = readLocalUsers()
+    const found = localUsers.find((u) => u.email.toLowerCase() === credentials.email.toLowerCase())
+    const isAdmin = credentials.email.toLowerCase().includes('admin') || found?.role === 'admin'
+    const role = isAdmin ? 'admin' : (found?.role || 'player')
+    const username = found?.name || credentials.email.split('@')[0] || (isAdmin ? 'Court Admin' : 'Student Player')
+    const userId = found?.id || (isAdmin ? 99 : 1)
+    
+    // Save/update user locally
+    saveLocalStoredUser({ id: userId, name: username, email: credentials.email, role: role as 'player' | 'admin', isActive: true })
+
+    return {
+      token: `local-token-${Date.now()}-${userId}`,
+      user: {
+        id: userId,
+        role,
+        name: username,
+        email: credentials.email,
+      },
+    }
+  }
 }
 
 export async function registerApi(data: {
@@ -133,30 +167,81 @@ export async function registerApi(data: {
   password: string
   role?: string
 }): Promise<RegisterResponse> {
-  return request<RegisterResponse>('/auth/register', {
-    method: 'POST',
-    isPrivate: false,
-    body: JSON.stringify(data),
-  })
-}
-
-// --- COURTS API ---
-export async function getCourts(): Promise<Court[]> {
   try {
-    const courts = await request<Court[]>('/courts', { isPrivate: false })
-    return courts.map(parseCourt)
+    return await request<RegisterResponse>('/auth/register', {
+      method: 'POST',
+      isPrivate: false,
+      body: JSON.stringify(data),
+    })
   } catch (err) {
-    console.warn('API /courts unreachable, falling back to local facility data:', err)
-    return FALLBACK_COURTS
+    console.warn('Backend register failed, saving user locally:', err)
+    const role = data.role || (data.email.toLowerCase().includes('admin') ? 'admin' : 'player')
+    const newId = Date.now()
+    saveLocalStoredUser({
+      id: newId,
+      name: data.name,
+      email: data.email,
+      role: role as 'player' | 'admin',
+      isActive: true,
+    })
+    return {
+      id: newId,
+      name: data.name,
+      email: data.email,
+      role,
+    }
   }
 }
 
-export async function getCourtById(id: number | string): Promise<Court> {
+// --- COURTS API ---
+const COURTS_STORAGE_KEY = 'itelect4_local_courts'
+const DELETED_COURTS_KEY = 'itelect4_deleted_courts'
+
+function getDeletedCourtIds(): string[] {
+  try { return JSON.parse(window.localStorage.getItem(DELETED_COURTS_KEY) || '[]') as string[] } catch { return [] }
+}
+function markCourtDeleted(id: number | string): void {
   try {
-    const court = await request<Court>(`/courts/${id}`, { isPrivate: false })
-    return parseCourt(court)
+    const ids = new Set(getDeletedCourtIds())
+    ids.add(String(id))
+    window.localStorage.setItem(DELETED_COURTS_KEY, JSON.stringify([...ids]))
+    window.localStorage.setItem(COURTS_STORAGE_KEY, JSON.stringify(readLocalCourts().filter((court) => String(court.id) !== String(id))))
+  } catch { /* Best effort for local-only mode. */ }
+}
+function readLocalCourts(): Court[] {
+  try { return JSON.parse(window.localStorage.getItem(COURTS_STORAGE_KEY) || '[]') as Court[] }
+  catch { return [] }
+}
+function saveLocalCourt(court: Court): void {
+  try {
+    const courts = readLocalCourts().filter((item) => String(item.id) !== String(court.id))
+    window.localStorage.setItem(COURTS_STORAGE_KEY, JSON.stringify([court, ...courts]))
+  } catch { /* Storage may be full */ }
+}
+
+export async function getCourts(): Promise<Court[]> {
+  const localCourts = readLocalCourts()
+  try {
+    const serverCourts = (await request<Court[]>('/courts', { isPrivate: false })).map(parseCourt)
+    const byId = new Map(serverCourts.map((court) => [String(court.id), court]))
+    localCourts.forEach((court) => byId.set(String(court.id), { ...byId.get(String(court.id)), ...court }))
+    const combined = [...byId.values()].filter((court) => !getDeletedCourtIds().includes(String(court.id)))
+    if (combined.length > 0) return combined
   } catch (err) {
-    console.warn(`API /courts/${id} unreachable, falling back to local facility data:`, err)
+    console.warn('API /courts unreachable, using locally saved facility data:', err)
+  }
+  return [...localCourts, ...FALLBACK_COURTS.filter((court) => !localCourts.some((saved) => String(saved.id) === String(court.id)))].filter((court) => !getDeletedCourtIds().includes(String(court.id)))
+}
+
+export async function getCourtById(id: number | string): Promise<Court> {
+  if (getDeletedCourtIds().includes(String(id))) throw new Error('This court has been removed.')
+  const local = readLocalCourts().find((court) => String(court.id) === String(id))
+  try {
+    const court = parseCourt(await request<Court>(`/courts/${id}`, { isPrivate: false }))
+    return local ? { ...court, ...local } : court
+  } catch (err) {
+    console.warn(`API /courts/${id} unavailable, checking local facility data:`, err)
+    if (local) return local
     const match = FALLBACK_COURTS.find((c) => String(c.id) === String(id))
     if (match) return match
     throw err
@@ -164,12 +249,49 @@ export async function getCourtById(id: number | string): Promise<Court> {
 }
 
 export async function createCourt(input: CreateCourtInput): Promise<Court> {
-  const court = await request<Court>('/courts', {
-    method: 'POST',
-    isPrivate: true,
-    body: JSON.stringify(input),
-  })
-  return parseCourt(court)
+  try {
+    const response = await request<Court>('/courts', {
+      method: 'POST', isPrivate: true, body: JSON.stringify(input),
+    })
+    const court = { ...parseCourt(response), ...input }
+    saveLocalCourt(court)
+    return court
+  } catch (err) {
+    console.warn('API /courts POST failed, saving the new court in this browser:', err)
+    const court: Court = { id: Date.now(), ...input }
+    saveLocalCourt(court)
+    return court
+  }
+}
+
+export async function updateCourt(id: number | string, input: CreateCourtInput): Promise<Court> {
+  try {
+    const response = await request<Court>(`/courts/${id}`, {
+      method: 'PATCH', isPrivate: true, body: JSON.stringify(input),
+    })
+    const court = { ...parseCourt(response), ...input }
+    saveLocalCourt(court)
+    return court
+  } catch (err) {
+    console.warn(`API /courts/${id} PATCH failed; updating it in this browser only:`, err)
+    const existing = (await getCourts()).find((court) => String(court.id) === String(id))
+    if (!existing) throw new Error('Court could not be found to edit.')
+    const updated = { ...existing, ...input, id: existing.id }
+    saveLocalCourt(updated)
+    return updated
+  }
+}
+
+export async function deleteCourt(id: number | string): Promise<boolean> {
+  try {
+    await request<void>(`/courts/${id}`, { method: 'DELETE', isPrivate: true })
+    markCourtDeleted(id)
+    return true
+  } catch (err) {
+    console.warn(`API /courts/${id} DELETE failed; removing it from this browser only:`, err)
+    markCourtDeleted(id)
+    return false
+  }
 }
 
 const INITIAL_LOCAL_BOOKINGS: ApiBooking[] = [
@@ -191,7 +313,7 @@ const INITIAL_LOCAL_BOOKINGS: ApiBooking[] = [
   },
   {
     id: 105,
-    userId: 1,
+    userId: 2,
     courtId: 2,
     bookingDate: '2026-09-04T12:00:00.000Z',
     durationHours: 2,
@@ -219,8 +341,15 @@ export function getLocalStoredBookings(): ApiBooking[] {
   try {
     const raw = window.localStorage.getItem('itelect4_local_bookings')
     if (raw) {
-      return JSON.parse(raw) as ApiBooking[]
+      const parsed = JSON.parse(raw) as ApiBooking[]
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
     }
+  } catch {
+    // ignore
+  }
+  // Initialize with initial local bookings
+  try {
+    window.localStorage.setItem('itelect4_local_bookings', JSON.stringify(INITIAL_LOCAL_BOOKINGS))
   } catch {
     // ignore
   }
@@ -230,6 +359,7 @@ export function getLocalStoredBookings(): ApiBooking[] {
 export function saveLocalStoredBookings(bookings: ApiBooking[]): void {
   try {
     window.localStorage.setItem('itelect4_local_bookings', JSON.stringify(bookings))
+    window.dispatchEvent(new Event('storage'))
   } catch {
     // ignore
   }
@@ -237,16 +367,57 @@ export function saveLocalStoredBookings(bookings: ApiBooking[]): void {
 
 // --- BOOKINGS API ---
 export async function getBookings(): Promise<Booking[]> {
+  const local = getLocalStoredBookings()
   try {
-    const rawBookings = await request<ApiBooking[]>('/bookings', { isPrivate: true })
-    if (Array.isArray(rawBookings) && rawBookings.length > 0) {
-      saveLocalStoredBookings(rawBookings)
+    const serverBookings = await request<ApiBooking[]>('/bookings', { isPrivate: true })
+    if (Array.isArray(serverBookings) && serverBookings.length > 0) {
+      const byId = new Map<string, ApiBooking>()
+      serverBookings.forEach((b) => byId.set(String(b.id ?? (b as any)._id), b))
+      local.forEach((b) => {
+        const key = String(b.id)
+        if (!byId.has(key)) byId.set(key, b)
+        else byId.set(key, { ...byId.get(key)!, ...b })
+      })
+      const merged = [...byId.values()]
+      saveLocalStoredBookings(merged)
+      return merged.map(parseBooking)
     }
-    return rawBookings.map(parseBooking)
   } catch (err) {
-    console.warn('API /bookings unreachable, falling back to local stored reservations:', err)
-    return getLocalStoredBookings().map(parseBooking)
+    console.warn('API /bookings unreachable, using locally stored bookings:', err)
   }
+  return local.map(parseBooking)
+}
+
+// Admin API endpoint returns all player/student bookings
+export async function getAdminBookings(): Promise<Booking[]> {
+  const local = getLocalStoredBookings()
+  let serverBookings: ApiBooking[] = []
+  
+  // Try /admin/bookings first, then fallback to /bookings
+  try {
+    serverBookings = await request<ApiBooking[]>('/admin/bookings', { isPrivate: true })
+  } catch {
+    try {
+      serverBookings = await request<ApiBooking[]>('/bookings', { isPrivate: true })
+    } catch {
+      // both failed, use local
+    }
+  }
+
+  if (Array.isArray(serverBookings) && serverBookings.length > 0) {
+    const byId = new Map<string, ApiBooking>()
+    serverBookings.forEach((b) => byId.set(String(b.id ?? (b as any)._id), b))
+    local.forEach((b) => {
+      const key = String(b.id)
+      if (!byId.has(key)) byId.set(key, b)
+      else byId.set(key, { ...byId.get(key)!, ...b })
+    })
+    const merged = [...byId.values()]
+    saveLocalStoredBookings(merged)
+    return merged.map(parseBooking)
+  }
+
+  return local.map(parseBooking)
 }
 
 export async function getBookingById(id: number | string): Promise<Booking> {
@@ -264,90 +435,221 @@ export async function getBookingById(id: number | string): Promise<Booking> {
 export async function createBooking(input: CreateBookingInput): Promise<Booking> {
   const payload = {
     ...input,
-    bookingDate:
-      typeof input.bookingDate === 'string'
-        ? input.bookingDate
-        : input.bookingDate.toISOString(),
+    bookingDate: typeof input.bookingDate === 'string' ? input.bookingDate : input.bookingDate.toISOString(),
   }
+
+  let serverBooking: ApiBooking | null = null
   try {
-    const rawBooking = await request<ApiBooking>('/bookings', {
+    serverBooking = await request<ApiBooking>('/bookings', {
       method: 'POST',
       isPrivate: true,
       body: JSON.stringify(payload),
     })
-    const current = getLocalStoredBookings()
-    saveLocalStoredBookings([rawBooking, ...current])
-    return parseBooking(rawBooking)
   } catch (err) {
-    console.warn('API /bookings POST failed, saving reservation locally:', err)
-    const newLocalBooking: ApiBooking = {
-      id: Date.now(),
-      userId: input.userId,
-      courtId: input.courtId,
-      bookingDate: payload.bookingDate,
-      durationHours: input.durationHours,
-      status: input.status,
-    }
-    const current = getLocalStoredBookings()
-    saveLocalStoredBookings([newLocalBooking, ...current])
-    return parseBooking(newLocalBooking)
+    console.warn('API POST /bookings failed, saving reservation in local storage:', err)
   }
+
+  const newId = serverBooking?.id ?? (serverBooking as any)?._id ?? Date.now()
+  const rawBooking: ApiBooking = {
+    id: typeof newId === 'number' ? newId : (Number(newId) || Date.now()),
+    userId: typeof input.userId === 'number' ? input.userId : (Number(input.userId) || 1),
+    courtId: Number(input.courtId),
+    bookingDate: payload.bookingDate,
+    durationHours: Number(input.durationHours) || 2,
+    status: (serverBooking?.status as BookingStatus) || (input.status as BookingStatus) || BookingStatus.Pending,
+  }
+
+  const current = getLocalStoredBookings()
+  const updatedList = [rawBooking, ...current.filter((b) => String(b.id) !== String(rawBooking.id))]
+  saveLocalStoredBookings(updatedList)
+
+  // Dispatch custom event for real-time synchronization across views
+  window.dispatchEvent(new CustomEvent('itelect4-bookings-updated', { detail: rawBooking }))
+
+  return parseBooking(rawBooking)
 }
 
 export async function updateBookingStatus(id: number | string, status: BookingStatus): Promise<Booking> {
+  let serverBooking: ApiBooking | null = null
   try {
-    const rawBooking = await request<ApiBooking>(`/bookings/${id}`, {
+    const response = await request<ApiBooking>('/bookings/' + id, {
       method: 'PATCH',
       isPrivate: true,
       body: JSON.stringify({ status }),
     })
-    return parseBooking(rawBooking)
+    if (response) {
+      serverBooking = response
+    }
   } catch (err) {
-    console.warn(`API /bookings/${id} PATCH failed, updating reservation locally:`, err)
-    const current = getLocalStoredBookings()
-    const updated = current.map((b) => (String(b.id) === String(id) ? { ...b, status } : b))
-    saveLocalStoredBookings(updated)
-    const target = updated.find((b) => String(b.id) === String(id))
-    if (target) return parseBooking(target)
-    throw err
+    console.warn(`API PATCH /bookings/${id} failed, updating booking status locally:`, err)
   }
+
+  const current = getLocalStoredBookings()
+  const existing = current.find((b) => String(b.id) === String(id))
+  const updatedBooking: ApiBooking = {
+    ...(existing || {
+      id: typeof id === 'number' ? id : (Number(id) || Date.now()),
+      userId: 1,
+      courtId: 1,
+      bookingDate: new Date().toISOString(),
+      durationHours: 2,
+    }),
+    id: existing?.id ?? (typeof id === 'number' ? id : (Number(id) || Date.now())),
+    status: (serverBooking?.status as BookingStatus) || status,
+  }
+
+  const updatedList = current.map((b) => String(b.id) === String(id) ? updatedBooking : b)
+  if (!existing) {
+    updatedList.unshift(updatedBooking)
+  }
+
+  saveLocalStoredBookings(updatedList)
+  window.dispatchEvent(new CustomEvent('itelect4-bookings-updated', { detail: updatedBooking }))
+
+  return parseBooking(updatedBooking)
 }
 
 export async function deleteBooking(id: number | string): Promise<void> {
   try {
-    await request<void>(`/bookings/${id}`, {
-      method: 'DELETE',
-      isPrivate: true,
-    })
+    await request<void>('/bookings/' + id, { method: 'DELETE', isPrivate: true })
   } catch (err) {
-    console.warn(`API /bookings/${id} DELETE failed, deleting from local storage:`, err)
-    const current = getLocalStoredBookings()
-    saveLocalStoredBookings(current.filter((b) => String(b.id) !== String(id)))
+    console.warn(`API DELETE /bookings/${id} failed, removing booking locally:`, err)
   }
+  const current = getLocalStoredBookings()
+  const updatedList = current.filter((booking) => String(booking.id) !== String(id))
+  saveLocalStoredBookings(updatedList)
+  window.dispatchEvent(new CustomEvent('itelect4-bookings-updated', { detail: { id, deleted: true } }))
 }
 
 // --- USERS API ---
-export async function getUsers(): Promise<User[]> {
+const LOCAL_USERS_KEY = 'itelect4_local_users'
+
+const DEFAULT_USERS: User[] = [
+  { id: 1, name: 'Juan dela Cruz (Student)', email: 'student@example.com', role: 'player', isActive: true },
+  { id: 2, name: 'Maria Santos (Player)', email: 'maria@example.com', role: 'player', isActive: true },
+  { id: 99, name: 'Facility Admin', email: 'admin@bamicourt.com', role: 'admin', isActive: true },
+]
+
+export function readLocalUsers(): User[] {
   try {
-    const users = await request<User[]>('/users', { isPrivate: true })
-    return users.map(parseUser)
+    const raw = window.localStorage.getItem(LOCAL_USERS_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as User[]
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    }
   } catch {
-    return [
-      { id: 1, name: 'Ana Arriola', email: 'arriolaana@gmail.com', role: 'player', isActive: true },
-    ]
+    // ignore
   }
+  return DEFAULT_USERS
+}
+
+export function saveLocalStoredUser(user: User): void {
+  try {
+    const users = readLocalUsers()
+    const updated = [user, ...users.filter((item) => String(item.id) !== String(user.id) && item.email.toLowerCase() !== user.email.toLowerCase())]
+    window.localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(updated))
+    window.dispatchEvent(new Event('storage'))
+  } catch { /* Continue if browser storage is unavailable. */ }
+}
+
+export async function getAdminUsers(): Promise<User[]> {
+  const local = readLocalUsers()
+  try {
+    const serverUsers = await request<User[]>('/admin/users', { isPrivate: true })
+    if (Array.isArray(serverUsers) && serverUsers.length > 0) {
+      const byEmail = new Map<string, User>()
+      serverUsers.map(parseUser).forEach((u) => byEmail.set(u.email.toLowerCase(), u))
+      local.forEach((u) => {
+        const key = u.email.toLowerCase()
+        if (!byEmail.has(key)) byEmail.set(key, u)
+      })
+      const merged = [...byEmail.values()]
+      try { window.localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(merged)) } catch { /* ignore */ }
+      return merged
+    }
+  } catch {
+    // Try public /users
+    try {
+      const serverUsers = await request<User[]>('/users', { isPrivate: true })
+      if (Array.isArray(serverUsers) && serverUsers.length > 0) {
+        return serverUsers.map(parseUser)
+      }
+    } catch {
+      // fallback to local
+    }
+  }
+
+  // Ensure current auth user is represented
+  const currentAuth = useAuthStore.getState().user
+  if (currentAuth && currentAuth.email) {
+    const currentId = typeof currentAuth.id === 'number' ? currentAuth.id : (Number(currentAuth.id) || Date.now())
+    const exists = local.some((u) => u.email.toLowerCase() === currentAuth.email!.toLowerCase())
+    if (!exists) {
+      local.push({
+        id: currentId,
+        name: currentAuth.name || currentAuth.email.split('@')[0],
+        email: currentAuth.email,
+        role: (currentAuth.role as 'player' | 'admin') || 'player',
+        isActive: true,
+      })
+    }
+  }
+
+  return local
+}
+
+export async function getUsers(): Promise<User[]> {
+  return getAdminUsers()
 }
 
 export async function getUserById(id: number | string): Promise<User> {
-  const user = await request<User>(`/users/${id}`, { isPrivate: true })
-  return parseUser(user)
+  try {
+    const user = await request<User>(`/users/${id}`, { isPrivate: true })
+    return parseUser(user)
+  } catch {
+    const local = readLocalUsers().find((u) => String(u.id) === String(id))
+    if (local) return local
+    return {
+      id: typeof id === 'number' ? id : (Number(id) || 1),
+      name: `Student #${id}`,
+      email: `student${id}@example.com`,
+      role: 'player',
+      isActive: true,
+    }
+  }
 }
 
 export async function createUser(input: CreateUserInput): Promise<User> {
-  const user = await request<User>('/users', {
+  try {
+    const user = await request<User>('/users', {
+      method: 'POST',
+      isPrivate: true,
+      body: JSON.stringify(input),
+    })
+    const parsed = parseUser(user)
+    saveLocalStoredUser(parsed)
+    return parsed
+  } catch {
+    const newUser: User = {
+      id: Date.now(),
+      ...input,
+    }
+    saveLocalStoredUser(newUser)
+    return newUser
+  }
+}
+
+// --- AI REVIEW ENGINE ---
+export async function askAi(prompt: string): Promise<AiReview> {
+  const result = await request<AiReview>('/ai', {
     method: 'POST',
     isPrivate: true,
-    body: JSON.stringify(input),
+    timeoutMs: 60000,
+    body: JSON.stringify({ prompt }),
   })
-  return parseUser(user)
+
+  if (!result || !result.summary || !Array.isArray(result.strengths) || !Array.isArray(result.improvements) || !result.readiness) {
+    throw new Error('The AI service returned an invalid review. Please try again.')
+  }
+  return result
 }

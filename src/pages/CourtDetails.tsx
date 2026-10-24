@@ -90,6 +90,7 @@ const CourtDetails: React.FC = () => {
         </div>
       </div>
 
+      {court.imageUrl && <img src={court.imageUrl} alt={court.name} className="h-56 sm:h-80 w-full rounded-2xl object-cover shadow-lg" />}
       {/* Main Details Card */}
       <div className="rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-xl space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -98,6 +99,7 @@ const CourtDetails: React.FC = () => {
               Facility Information
             </h3>
 
+            {court.description && <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{court.description}</p>}
             <div className="space-y-2 text-xs font-semibold">
               <p className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-700">
                 <span className="text-slate-400 uppercase font-black">Court ID</span>
@@ -132,10 +134,7 @@ const CourtDetails: React.FC = () => {
                 ⚡ Court Specifications
               </h4>
               <ul className="space-y-1.5 text-slate-600 dark:text-slate-300 font-medium">
-                <li>• BWF Standard Court Dimensions (13.4m x 6.1m)</li>
-                <li>• Anti-slip professional flooring surface</li>
-                <li>• High-grade LED overhead shadowless lights</li>
-                <li>• Climate-controlled indoor ventilation system</li>
+                {(court.amenities ? court.amenities.split(',').map((item) => item.trim()).filter(Boolean) : [court.surface || 'Badminton court facility', 'Court booking available through Bamicourt']).map((item) => <li key={item}>• {item}</li>)}
               </ul>
             </div>
 

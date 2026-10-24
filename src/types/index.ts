@@ -23,6 +23,10 @@ export interface Court {
   name: string;
   location: string;
   isAvailable: boolean;
+  description?: string;
+  imageUrl?: string;
+  surface?: string;
+  amenities?: string;
 }
 
 export interface Booking {
@@ -57,3 +61,11 @@ export type CreateBookingInput = Omit<Booking, "id" | "bookingDate"> & {
   bookingDate: string | Date;
 };
 export type CreateUserInput = Omit<User, "id">;
+export type AiReadiness = 'ready' | 'almost' | 'not-yet'
+
+export interface AiReview {
+  summary: string
+  strengths: string[]
+  improvements: string[]
+  readiness: AiReadiness
+}

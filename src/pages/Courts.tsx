@@ -1,26 +1,26 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { getCourts } from '../api/client'
-import CourtComponent from '../components/Court'
+import { getCourts, getBookings } from '../api/client'
 import { useBookingStore } from '../store/useBookingStore'
 import { useUiStore } from '../store/uiStore'
 import type { Court } from '../types'
+import { isCourtBookedOnDate } from '../lib/courtAvailability'
 
 function CourtsEmptyState({ searchQuery, onClear }: { searchQuery: string; onClear: () => void }) {
   return (
-    <div className="rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-8 text-center space-y-4 shadow-sm">
-      <div className="text-4xl">🔎</div>
+    <div className="rounded-xl sm:rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 sm:p-8 text-center space-y-4 shadow-sm">
+      <div className="text-3xl sm:text-4xl">🔎</div>
       <div className="space-y-1">
-        <h3 className="text-lg font-black text-[#064A8C] dark:text-blue-300 uppercase">No Courts Found</h3>
-        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-          No facilities matched your search query "{searchQuery}".
+        <h3 className="text-base sm:text-lg font-black text-[#064A8C] dark:text-blue-300 uppercase">No Courts Found</h3>
+        <p className="text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+          No facilities matched "{searchQuery}".
         </p>
       </div>
       <button
         type="button"
         onClick={onClear}
-        className="rounded-xl bg-[#0876D1] hover:bg-[#064A8C] text-white text-xs font-black uppercase tracking-wider px-4 py-2 shadow-md transition-colors"
+        className="rounded-lg sm:rounded-xl bg-[#0876D1] hover:bg-[#064A8C] text-white text-[10px] sm:text-xs font-black uppercase tracking-wider px-3 sm:px-4 py-1.5 sm:py-2 shadow-md transition-all hover:shadow-lg"
       >
         Clear Search Filter
       </button>
@@ -28,162 +28,199 @@ function CourtsEmptyState({ searchQuery, onClear }: { searchQuery: string; onCle
   )
 }
 
-function CourtsSkeletonCard() {
+function CourtsSkeletonGrid() {
   return (
-    <div className="rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-md space-y-4 animate-pulse">
-      <div className="h-6 w-1/3 bg-slate-200 dark:bg-slate-700 rounded-md" />
-      <div className="h-4 w-2/3 bg-slate-100 dark:bg-slate-700/60 rounded-md" />
-      <div className="h-12 bg-slate-100 dark:bg-slate-700/40 rounded-xl" />
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="rounded-xl sm:rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-md animate-pulse overflow-hidden">
+          <div className="h-32 sm:h-40 bg-slate-200 dark:bg-slate-700" />
+          <div className="p-4 sm:p-5 space-y-3">
+            <div className="h-5 w-2/3 bg-slate-200 dark:bg-slate-700 rounded-md" />
+            <div className="h-4 w-full bg-slate-100 dark:bg-slate-700/60 rounded-md" />
+            <div className="h-10 bg-slate-100 dark:bg-slate-700/40 rounded-xl" />
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
 
+type FilterMode = 'all' | 'available' | 'booked'
+
 const Courts: React.FC = () => {
   const navigate = useNavigate()
 
-  // Typed useQuery call 2: Fetch all courts directory
   const { data: courts = [], isLoading } = useQuery<Court[]>({
     queryKey: ['courts'],
     queryFn: getCourts,
   })
+  const { data: bookings = [] } = useQuery({ queryKey: ['bookings'], queryFn: getBookings, refetchInterval: 15000 })
   const searchTerm = useUiStore((state) => state.searchTerm)
   const setSearchTerm = useUiStore((state) => state.setSearchTerm)
-  const selectedCourtId = useBookingStore((state) => state.selectedCourtId)
   const setSelectedCourtId = useBookingStore((state) => state.setSelectedCourtId)
   const selectedDate = useBookingStore((state) => state.selectedDate)
   const setSelectedDate = useBookingStore((state) => state.setSelectedDate)
+  const today = new Date()
+  const localToday = [today.getFullYear(), String(today.getMonth() + 1).padStart(2, '0'), String(today.getDate()).padStart(2, '0')].join('-')
+  const courtIsAvailable = (court: Court) => Boolean(selectedDate) && selectedDate >= localToday && court.isAvailable && !isCourtBookedOnDate(bookings, court.id, selectedDate)
 
-  const selectedCourt = courts.find((c) => c.id === selectedCourtId) ?? courts[0]
+  const [filterMode, setFilterMode] = useState<FilterMode>('all')
 
-  const filteredCourts = courts.filter(
-    (court) =>
+  const filteredCourts = courts.filter((court) => {
+    const matchesSearch =
       court.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       court.location.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+    const matchesFilter =
+      filterMode === 'all' ||
+      (filterMode === 'available' && courtIsAvailable(court)) ||
+      (filterMode === 'booked' && !courtIsAvailable(court))
+    return matchesSearch && matchesFilter
+  })
 
   const handleSelectAndBook = (courtId: number) => {
     setSelectedCourtId(courtId)
+    setSelectedDate(selectedDate)
     navigate('/booking')
   }
 
+  const availableCount = courts.filter(courtIsAvailable).length
+  const bookedCount = courts.length - availableCount
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header Banner */}
-      <div className="rounded-2xl border-2 border-slate-300 dark:border-slate-700 border-l-8 border-l-[#078A63] bg-white dark:bg-slate-800 p-6 shadow-xl transition-colors duration-300">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="rounded-xl sm:rounded-2xl border-2 border-slate-300 dark:border-slate-700 border-l-4 sm:border-l-8 border-l-[#078A63] bg-white dark:bg-slate-800 p-4 sm:p-6 shadow-xl transition-colors duration-300">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
           <div>
-            <span className="inline-flex items-center gap-1 rounded bg-[#EAF6EC] dark:bg-slate-700 px-2.5 py-0.5 text-[11px] font-extrabold uppercase tracking-wider text-[#078A63] dark:text-emerald-400 mb-1">
+            <span className="inline-flex items-center gap-1 rounded bg-[#EAF6EC] dark:bg-slate-700 px-2 sm:px-2.5 py-0.5 text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-[#078A63] dark:text-emerald-400 mb-1">
               🏸 Badminton Facilities Directory
             </span>
-            <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-wide text-[#064A8C] dark:text-blue-300">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-black uppercase tracking-wide text-[#064A8C] dark:text-blue-300">
               COURTS & ARENAS
             </h1>
-            <p className="text-xs font-bold text-slate-600 dark:text-slate-300 mt-1">
-              Select your preferred court to check real-time schedule and proceed to reservation.
+            <p className="text-[10px] sm:text-xs font-bold text-slate-600 dark:text-slate-300 mt-1">
+              Check court availability for your chosen date, then reserve.
             </p>
           </div>
 
-          {/* Search Box */}
-          <div className="w-full md:w-80">
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search by court or location..."
-              className="w-full rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-[#F5FAF6] dark:bg-slate-700 px-4 py-2.5 text-xs font-extrabold text-[#064A8C] dark:text-white outline-none placeholder:text-slate-400 focus:border-[#0876D1] focus:ring-2 focus:ring-[#0876D1]/20 shadow-sm"
-            />
+          {/* Search and date filters */}
+          <div className="w-full space-y-3 md:w-80">
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">🔍</span>
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by court or location..."
+                className="w-full rounded-lg border-2 border-slate-300 bg-[#F5FAF6] py-2 pl-9 pr-3 text-xs font-extrabold text-[#064A8C] shadow-sm outline-none transition-all placeholder:text-slate-400 focus:border-[#0876D1] focus:ring-2 focus:ring-[#0876D1]/20 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:rounded-xl sm:py-2.5 sm:pl-10 sm:pr-4"
+              />
+            </div>
+            <label className="block text-[10px] font-black uppercase tracking-wide text-slate-600 dark:text-slate-300 sm:text-xs">
+              Check availability on
+              <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="mt-1 w-full rounded-lg border-2 border-slate-300 bg-white px-3 py-2 text-sm font-bold dark:border-slate-600 dark:bg-slate-800"/>
+            </label>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        {/* GT2 Court Selection Card UI */}
-        <div className="lg:col-span-1">
-          <CourtComponent
-            court={selectedCourt}
-            courts={filteredCourts}
-            selectedDate={selectedDate}
-            onCourtChange={setSelectedCourtId}
-            onDateChange={setSelectedDate}
-            isLoading={isLoading}
-          />
-        </div>
+      {/* Filter Buttons */}
+      <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+        {([
+          { key: 'all' as FilterMode, label: `All (${courts.length})`, activeClass: 'bg-[#064A8C] text-white shadow-md' },
+          { key: 'available' as FilterMode, label: `✅ Available (${availableCount})`, activeClass: 'bg-[#078A63] text-white shadow-md' },
+          { key: 'booked' as FilterMode, label: `🔒 Booked (${bookedCount})`, activeClass: 'bg-rose-600 text-white shadow-md' },
+        ]).map((f) => (
+          <button
+            key={f.key}
+            type="button"
+            onClick={() => setFilterMode(f.key)}
+            className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${
+              filterMode === f.key
+                ? f.activeClass
+                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-2 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
 
-        {/* Courts Grid */}
-        <div className="lg:col-span-2 space-y-4">
-          {isLoading ? (
-            <CourtsSkeletonCard />
-          ) : filteredCourts.length === 0 ? (
-            <CourtsEmptyState searchQuery={searchTerm} onClear={() => setSearchTerm('')} />
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {filteredCourts.map((court) => {
-                const isSelected = court.id === selectedCourtId
-                return (
-                  <div
-                    key={court.id}
-                    className={`rounded-2xl border-2 p-5 shadow-lg flex flex-col justify-between transition-all duration-200 ${
-                      isSelected
-                        ? 'border-[#0876D1] ring-2 ring-[#0876D1]/30 bg-blue-50/40 dark:bg-slate-800'
-                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-400'
+      {/* Courts Grid */}
+      {isLoading ? (
+        <CourtsSkeletonGrid />
+      ) : filteredCourts.length === 0 ? (
+        <CourtsEmptyState searchQuery={searchTerm || filterMode} onClear={() => { setSearchTerm(''); setFilterMode('all') }} />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
+          {filteredCourts.map((court) => (
+            <div
+              key={court.id}
+              className="rounded-xl sm:rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-md overflow-hidden hover:shadow-xl hover:border-[#0876D1]/50 hover:-translate-y-1 transition-all duration-300 group flex flex-col"
+            >
+              {/* Court Image */}
+              <div className="relative h-36 sm:h-44 overflow-hidden">
+                <img
+                  src={court.imageUrl || "/court-card.jpg"}
+                  alt={court.name}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                />
+                <div className="absolute top-2 sm:top-3 right-2 sm:right-3">
+                  <span
+                    className={`px-2 sm:px-3 py-0.5 sm:py-1 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-full shadow-lg backdrop-blur-sm ${
+                      courtIsAvailable(court)
+                        ? 'bg-[#078A63]/90 text-white'
+                        : 'bg-rose-600/90 text-white'
                     }`}
                   >
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <span className="text-[10px] font-black uppercase tracking-widest text-[#0876D1]">
-                            Facility #{court.id}
-                          </span>
-                          <h3 className="text-lg font-black text-[#064A8C] dark:text-blue-300 uppercase">
-                            {court.name}
-                          </h3>
-                        </div>
-                        <span
-                          className={`px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider rounded-full ${
-                            court.isAvailable
-                              ? 'bg-[#EAF6EC] text-[#078A63] border border-[#078A63]/30 dark:bg-emerald-950 dark:text-emerald-300'
-                              : 'bg-rose-100 text-rose-700 border border-rose-300 dark:bg-rose-950 dark:text-rose-300'
-                          }`}
-                        >
-                          {court.isAvailable ? 'Available' : 'Booked'}
-                        </span>
-                      </div>
+                    {courtIsAvailable(court) ? '✓ Available on date' : '✕ Unavailable on date'}
+                  </span>
+                </div>
+                <div className="absolute top-2 sm:top-3 left-2 sm:left-3">
+                  <span className="bg-[#064A8C]/90 backdrop-blur-sm text-white px-2 sm:px-2.5 py-0.5 sm:py-1 text-[9px] sm:text-[10px] font-black uppercase rounded-lg shadow-lg">
+                    Court #{court.id}
+                  </span>
+                </div>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent pointer-events-none" />
+              </div>
 
-                      <div className="rounded-xl bg-[#F5FAF6] dark:bg-slate-700/60 p-3 space-y-1 border border-slate-200 dark:border-slate-600 text-xs">
-                        <p className="font-bold text-slate-700 dark:text-slate-200">
-                          📍 <strong>Location:</strong> {court.location}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between gap-2">
-                      <Link
-                        to={`/courts/${court.id}`}
-                        className="text-xs font-black uppercase text-[#064A8C] dark:text-blue-300 hover:underline"
-                      >
-                        🔍 Details
-                      </Link>
-
-                      <button
-                        type="button"
-                        disabled={!court.isAvailable}
-                        onClick={() => handleSelectAndBook(court.id)}
-                        className={`rounded-lg px-3.5 py-1.5 text-xs font-black uppercase tracking-wider text-white shadow-md transition-colors ${
-                          court.isAvailable
-                            ? 'bg-[#078A63] hover:bg-[#065f46]'
-                            : 'bg-slate-400 cursor-not-allowed'
-                        }`}
-                      >
-                        {court.isAvailable ? 'Book →' : 'Unavailable'}
-                      </button>
-                    </div>
+              {/* Court Info */}
+              <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-2 sm:space-y-3">
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-[#064A8C] dark:text-blue-300 uppercase group-hover:text-[#0876D1] transition-colors">
+                    {court.name}
+                  </h3>
+                  {court.description && <p className="mt-2 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{court.description}</p>}
+                  <div className="flex items-center gap-1.5 mt-1 text-[10px] sm:text-xs font-bold text-slate-600 dark:text-slate-300">
+                    <span>📍</span>
+                    <span>{court.location}</span>
                   </div>
-                )
-              })}
+                </div>
+
+                <div className="flex items-center justify-between pt-2 sm:pt-3 border-t border-slate-100 dark:border-slate-700 gap-2">
+                  <Link
+                    to={`/courts/${court.id}`}
+                    className="text-[10px] sm:text-xs font-black uppercase text-[#064A8C] dark:text-blue-300 hover:text-[#0876D1] hover:underline transition-colors"
+                  >
+                    🔍 Details
+                  </Link>
+                  <button
+                    type="button"
+                    disabled={!courtIsAvailable(court)}
+                    onClick={() => handleSelectAndBook(court.id)}
+                    className={`rounded-lg sm:rounded-xl px-3 sm:px-5 py-2 sm:py-2.5 text-[10px] sm:text-xs font-black uppercase tracking-wider text-white shadow-md transition-all ${
+                      courtIsAvailable(court)
+                        ? 'bg-[#078A63] hover:bg-[#065f46] hover:shadow-lg hover:-translate-y-0.5'
+                        : 'bg-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    {courtIsAvailable(court) ? '🏸 Book Now' : 'Unavailable on date'}
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
+          ))}
         </div>
-      </div>
+      )}
     </div>
   )
 }

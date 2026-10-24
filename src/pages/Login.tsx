@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useAuthStore } from '../store/authStore'
 import { useBookingStore } from '../store/useBookingStore'
 import { loginSchema, type LoginFormData } from '../schemas/loginSchema'
-import { loginApi } from '../api/client'
+import { loginApi, saveLocalStoredUser } from '../api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -36,6 +36,7 @@ const Login: React.FC = () => {
       })
 
       const username = response.user.name || data.email.split('@')[0] || 'Player'
+      saveLocalStoredUser({ id: Number(response.user.id) || Date.now(), name: username, email: data.email, role: (response.user.role || 'player') as 'player' | 'admin', isActive: true })
       setAuth(response.token, {
         id: response.user.id,
         name: username,
