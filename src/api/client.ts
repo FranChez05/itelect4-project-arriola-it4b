@@ -640,93 +640,16 @@ export async function createUser(input: CreateUserInput): Promise<User> {
 }
 
 // --- AI REVIEW ENGINE ---
-function generateIntelligentAiReview(prompt: string): AiReview {
-  const p = prompt.toLowerCase()
-  const hasCourts = p.includes('court') || p.includes('facility') || p.includes('arena') || p.includes('hall')
-  const hasBooking = p.includes('book') || p.includes('reserve') || p.includes('schedule') || p.includes('time') || p.includes('slot')
-  const hasAdmin = p.includes('admin') || p.includes('approve') || p.includes('decline') || p.includes('manage') || p.includes('accept')
-  const hasAvailability = p.includes('availab') || p.includes('conflict') || p.includes('date') || p.includes('prevent')
-  const hasAuth = p.includes('login') || p.includes('sign in') || p.includes('register') || p.includes('player') || p.includes('account') || p.includes('student') || p.includes('role')
-
-  const strengths: string[] = []
-  const improvements: string[] = []
-
-  if (hasCourts) {
-    strengths.push('Comprehensive court catalog with visual previews, surface details, and facility information.')
-  } else {
-    improvements.push('Add richer court information like surface type (sprung wood, BWF mat), lighting, and amenities.')
-  }
-
-  if (hasBooking) {
-    strengths.push('Intuitive player reservation flow with date selection, duration controls, and validation.')
-  } else {
-    improvements.push('Implement a multi-step reservation booking wizard with quick date pickers and instant validation.')
-  }
-
-  if (hasAdmin) {
-    strengths.push('Dedicated administrative portal with real-time approval, decline, cancellation, and match completion actions.')
-  } else {
-    improvements.push('Provide admins with a high-level command center to approve, decline, and track court utilization.')
-  }
-
-  if (hasAvailability) {
-    strengths.push('Robust availability verification preventing overlapping reservations on the same court and date.')
-  } else {
-    improvements.push('Introduce real-time slot conflict warning banners before players submit reservation forms.')
-  }
-
-  if (hasAuth) {
-    strengths.push('Clear role-based access control separating Student/Player and Facility Administrator experiences.')
-  } else {
-    improvements.push('Consider integrating campus student ID single sign-on (SSO) for streamlined verification.')
-  }
-
-  // Ensure at least 3 strengths and 3 improvements
-  if (strengths.length < 3) {
-    strengths.push('Responsive mobile-first layout with instant visual status indicators.')
-    strengths.push('Real-time synchronization between student bookings and administrator requests.')
-  }
-  if (improvements.length < 3) {
-    improvements.push('Add automatic push or email notifications when an admin accepts, declines, or cancels a match.')
-    improvements.push('Incorporate historical analytics to track peak court usage hours and approval rates.')
-  }
-
-  let readiness: 'ready' | 'almost' | 'not-yet' = 'almost'
-  if (hasCourts && hasBooking && hasAdmin && hasAvailability) {
-    readiness = 'ready'
-  } else if (!hasBooking && !hasCourts) {
-    readiness = 'not-yet'
-  }
-
-  const summary = readiness === 'ready'
-    ? 'Your badminton court booking platform demonstrates excellent architectural readiness! The system successfully supports the complete lifecycle: students can browse facilities and request match bookings, while administrators can review, accept, decline, complete, or cancel bookings with conflict prevention and live analytics.'
-    : readiness === 'almost'
-    ? 'Your booking application has a strong foundation for player and admin interactions, but could benefit from expanded administrative tools, clearer availability signals, and tighter lifecycle status tracking.'
-    : 'The application concept requires additional core reservation features such as court availability calendars, player self-service booking, and admin approval workflows before launch.'
-
-  return {
-    summary,
-    readiness,
-    strengths: strengths.slice(0, 4),
-    improvements: improvements.slice(0, 4),
-  }
-}
-
 export async function askAi(prompt: string): Promise<AiReview> {
-  try {
-    const result = await request<AiReview>('/ai', {
-      method: 'POST',
-      isPrivate: true,
-      timeoutMs: 15000,
-      body: JSON.stringify({ prompt }),
-    })
-    if (result && result.summary && Array.isArray(result.strengths) && Array.isArray(result.improvements) && result.readiness) {
-      return result
-    }
-  } catch (err) {
-    console.warn('Backend /ai unreachable or returned error, using built-in intelligent evaluation engine:', err)
+  const result = await request<AiReview>('/ai', {
+    method: 'POST',
+    isPrivate: true,
+    timeoutMs: 60000,
+    body: JSON.stringify({ prompt }),
+  })
+
+  if (!result || !result.summary || !Array.isArray(result.strengths) || !Array.isArray(result.improvements) || !result.readiness) {
+    throw new Error('The AI service returned an invalid review. Please try again.')
   }
-  // Simulate AI evaluation processing time for rich user feedback
-  await new Promise((resolve) => setTimeout(resolve, 800))
-  return generateIntelligentAiReview(prompt)
+  return result
 }
