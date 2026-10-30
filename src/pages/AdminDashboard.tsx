@@ -34,7 +34,13 @@ const AdminDashboard: React.FC = () => {
   const removeCourtFromStore = useBookingStore((s) => s.removeCourt)
   const updateCourtInStore = useBookingStore((s) => s.updateCourt)
   const fetchDashboardData = useBookingStore((s) => s.fetchData)
-  const pending = bookings.filter((b) => b.status === BookingStatus.Pending)
+  const sortedBookings = useMemo(() => [...bookings].sort((a, b) => {
+    const idA = Number(a.id) || 0
+    const idB = Number(b.id) || 0
+    if (idA !== idB) return idB - idA
+    return new Date(b.bookingDate).getTime() - new Date(a.bookingDate).getTime()
+  }), [bookings])
+  const pending = useMemo(() => sortedBookings.filter((b) => String(b.status).toLowerCase().trim() === 'pending'), [sortedBookings])
   const today = new Date().toDateString()
   const todayBookings = bookings.filter((b) => new Date(b.bookingDate).toDateString() === today).length
   const players = useMemo(() => {
@@ -203,7 +209,7 @@ const AdminDashboard: React.FC = () => {
         {pending.length ? <div className="mt-4 space-y-3">{pending.slice(0,4).map((b) => <BookingRow key={b.id} booking={b} court={courts.find(c=>c.id===b.courtId)} onDecide={decide} onDelete={removeBookingRequest} disabled={busy}/>)}</div> : <p className="mt-4 rounded-xl bg-slate-50 dark:bg-slate-700/50 p-4 text-sm text-slate-500">No booking requests waiting for review.</p>}
       </section>
     </>}
-    {tab === 'requests' && <section className={panel}><h2 className="text-lg font-black text-[#064A8C] dark:text-blue-300">Booking requests</h2><div className="mt-4 space-y-3">{bookings.map((b) => <BookingRow key={b.id} booking={b} court={courts.find(c=>c.id===b.courtId)} onDecide={decide} onDelete={removeBookingRequest} disabled={busy}/>)}</div>{bookings.length === 0 && <p className="mt-4 rounded-xl bg-slate-50 dark:bg-slate-700/50 p-4 text-sm text-slate-500">No player bookings have been returned by the API or saved in this browser.</p>}</section>}
+    {tab === 'requests' && <section className={panel}><h2 className="text-lg font-black text-[#064A8C] dark:text-blue-300">Booking requests</h2><div className="mt-4 space-y-3">{sortedBookings.map((b) => <BookingRow key={b.id} booking={b} court={courts.find(c=>c.id===b.courtId)} onDecide={decide} onDelete={removeBookingRequest} disabled={busy}/>)}</div>{sortedBookings.length === 0 && <p className="mt-4 rounded-xl bg-slate-50 dark:bg-slate-700/50 p-4 text-sm text-slate-500">No player bookings have been returned by the API or saved in this browser.</p>}</section>}
     {tab === 'courts' && <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.8fr)] gap-4">
       <section className={panel}>
         <h2 className="text-lg font-black text-[#064A8C] dark:text-blue-300">{editingCourtId !== null ? 'Edit court' : 'Add a court'}</h2>
