@@ -131,66 +131,27 @@ export interface RegisterResponse {
 }
 
 export async function loginApi(credentials: { email: string; password: string }): Promise<LoginResponse> {
-  try {
-    return await request<LoginResponse>('/auth/login', {
-      method: 'POST',
-      isPrivate: false,
-      body: JSON.stringify(credentials),
-    })
-  } catch (err) {
-    console.warn('Backend login failed, using local auth recovery:', err)
-    const localUsers = readLocalUsers()
-    const found = localUsers.find((u) => u.email.toLowerCase() === credentials.email.toLowerCase())
-    const isAdmin = credentials.email.toLowerCase().includes('admin') || found?.role === 'admin'
-    const role = isAdmin ? 'admin' : (found?.role || 'player')
-    const username = found?.name || credentials.email.split('@')[0] || (isAdmin ? 'Court Admin' : 'Student Player')
-    const userId = found?.id || (isAdmin ? 99 : 1)
-    
-    // Save/update user locally
-    saveLocalStoredUser({ id: userId, name: username, email: credentials.email, role: role as 'player' | 'admin', isActive: true })
-
-    return {
-      token: `local-token-${Date.now()}-${userId}`,
-      user: {
-        id: userId,
-        role,
-        name: username,
-        email: credentials.email,
-      },
-    }
+  const result = await request<LoginResponse>('/auth/login', {
+    method: 'POST',
+    isPrivate: false,
+    body: JSON.stringify({ email: credentials.email.trim(), password: credentials.password }),
+  })
+  if (!result.token || !result.user?.id) {
+    throw new Error('The server returned an invalid login response. Please try again.')
   }
+  return result
 }
 
 export async function registerApi(data: {
   name: string
   email: string
   password: string
-  role?: string
 }): Promise<RegisterResponse> {
-  try {
-    return await request<RegisterResponse>('/auth/register', {
-      method: 'POST',
-      isPrivate: false,
-      body: JSON.stringify(data),
-    })
-  } catch (err) {
-    console.warn('Backend register failed, saving user locally:', err)
-    const role = data.role || (data.email.toLowerCase().includes('admin') ? 'admin' : 'player')
-    const newId = Date.now()
-    saveLocalStoredUser({
-      id: newId,
-      name: data.name,
-      email: data.email,
-      role: role as 'player' | 'admin',
-      isActive: true,
-    })
-    return {
-      id: newId,
-      name: data.name,
-      email: data.email,
-      role,
-    }
-  }
+  return request<RegisterResponse>('/auth/register', {
+    method: 'POST',
+    isPrivate: false,
+    body: JSON.stringify({ ...data, name: data.name.trim(), email: data.email.trim() }),
+  })
 }
 
 // --- COURTS API ---
