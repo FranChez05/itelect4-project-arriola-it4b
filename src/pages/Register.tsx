@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useAuthStore } from '../store/authStore'
 import { useBookingStore } from '../store/useBookingStore'
 import { registerSchema, type RegisterFormData } from '../schemas/registerSchema'
-import { registerApi, loginApi, saveLocalStoredUser } from '../api/client'
+import { registerApi, loginApi } from '../api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -27,21 +27,19 @@ const Register: React.FC = () => {
       email: '',
       password: '',
       confirmPassword: '',
-      role: 'player',
     },
   })
 
   const onSubmit = async (data: RegisterFormData) => {
     setApiError(null)
+    let accountCreated = false
     try {
       const regResponse = await registerApi({
         name: data.name,
         email: data.email,
         password: data.password,
-        role: data.role,
       })
-
-      saveLocalStoredUser({ id: Number(regResponse.id) || Date.now(), name: regResponse.name || data.name, email: data.email, role: (regResponse.role || data.role) as 'player' | 'admin', isActive: true })
+      accountCreated = true
 
       // Log in automatically after successful registration
       const loginResponse = await loginApi({
@@ -53,7 +51,7 @@ const Register: React.FC = () => {
         id: regResponse.id || loginResponse.user.id,
         name: regResponse.name || data.name,
         email: data.email,
-        role: regResponse.role || data.role,
+        role: 'player',
       })
 
       // Fetch fresh court and booking data using newly acquired JWT token
@@ -65,7 +63,9 @@ const Register: React.FC = () => {
       }, 1000)
     } catch (err) {
       console.error('Registration error:', err)
-      setApiError(err instanceof Error ? err.message : 'Registration failed. Please try again.')
+      setApiError(accountCreated
+        ? 'Account created, but automatic sign-in failed. Please sign in with your new account.'
+        : err instanceof Error ? err.message : 'Registration failed. Please try again.')
     }
   }
 
@@ -139,28 +139,6 @@ const Register: React.FC = () => {
             {errors.email && (
               <p className="mt-1 text-xs font-bold text-rose-600 dark:text-rose-400">
                 {errors.email.message}
-              </p>
-            )}
-          </div>
-
-          <div>
-            <Label
-              htmlFor="register-role"
-              className="block text-xs font-black uppercase text-slate-700 dark:text-slate-300 mb-1"
-            >
-              Role
-            </Label>
-            <select
-              id="register-role"
-              {...register('role')}
-              className="w-full rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2.5 text-xs font-bold text-[#064A8C] dark:text-white outline-none focus:border-[#0876D1]"
-            >
-              <option value="player">🏸 Player</option>
-              <option value="admin">🛡️ Court Admin</option>
-            </select>
-            {errors.role && (
-              <p className="mt-1 text-xs font-bold text-rose-600 dark:text-rose-400">
-                {errors.role.message}
               </p>
             )}
           </div>

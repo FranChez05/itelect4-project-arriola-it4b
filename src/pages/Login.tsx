@@ -22,8 +22,8 @@ const Login: React.FC = () => {
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: 'test1@example.com',
-      password: 'password123',
+      email: '',
+      password: '',
     },
   })
 
@@ -44,7 +44,6 @@ const Login: React.FC = () => {
         role: response.user.role || 'player',
       })
 
-      // Fetch fresh court and booking data using newly acquired JWT token
       await useBookingStore.getState().fetchData()
 
       navigate('/', { replace: true })

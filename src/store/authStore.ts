@@ -31,9 +31,10 @@ export const useAuthStore = create<AuthState>()(
         }),
       login: (name: string, token?: string, user?: AuthUserData) =>
         set({
-          token: token || `demo-token-${name}`,
+          // Never create a local-only token: protected API calls require a server JWT.
+          token: token || null,
           userName: name,
-          user: user || { name },
+          user: token ? (user || { name }) : null,
         }),
       logout: () => set({ token: null, userName: null, user: null }),
     }),
@@ -44,6 +45,20 @@ export const useAuthStore = create<AuthState>()(
         userName: state.userName,
         user: state.user,
       }),
+      // Clear fake tokens written by older local-auth recovery code on rehydrate.
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<AuthState>
+        const token = typeof persisted.token === 'string' && persisted.token.split('.').length === 3
+          ? persisted.token
+          : null
+        return {
+          ...currentState,
+          ...persisted,
+          token,
+          userName: token ? persisted.userName ?? null : null,
+          user: token ? persisted.user ?? null : null,
+        }
+      },
     }
   )
 )
