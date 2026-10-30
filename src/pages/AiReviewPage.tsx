@@ -3,13 +3,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { askAi } from '../api/client'
 import { aiReviewFormSchema, type AiReviewFormData } from '../schemas/aiReviewSchema'
-import type { AiReadiness } from '../types'
-
-const readinessStyles: Record<AiReadiness, string> = {
-  ready: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200',
-  almost: 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200',
-  'not-yet': 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-200',
-}
 
 const panel = 'rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 sm:p-7 shadow-sm'
 
@@ -61,9 +54,9 @@ export default function AiReviewPage() {
 
       {review.data && (
         <section aria-live="polite" className={`${panel} space-y-5`}>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><p className="text-xs font-black uppercase tracking-wider text-slate-500">AI assessment</p><h2 className="mt-1 text-xl font-black text-[#064A8C] dark:text-blue-300">Your review</h2></div>
-            <span className={`rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide ${readinessStyles[review.data.readiness]}`}>{review.data.readiness.replace('-', ' ')}</span>
+          <div>
+            <p className="text-xs font-black uppercase tracking-wider text-slate-500">AI assessment</p>
+            <h2 className="mt-1 text-xl font-black text-[#064A8C] dark:text-blue-300">Your review</h2>
           </div>
           <p className="rounded-xl bg-slate-50 p-4 text-base font-semibold leading-7 text-slate-800 dark:bg-slate-700/50 dark:text-slate-100">{review.data.summary}</p>
           <div className="grid gap-5 sm:grid-cols-2">
