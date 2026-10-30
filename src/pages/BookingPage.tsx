@@ -35,6 +35,7 @@ const BookingPage: React.FC = () => {
 
   const [showNote, toggleShowNote] = useToggle(false)
   const [currentStep, setCurrentStep] = useState(1)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   // useMutation that POSTs a new booking payload and calls invalidateQueries in onSuccess
   const bookingMutation = useMutation({
@@ -47,6 +48,7 @@ const BookingPage: React.FC = () => {
       navigate('/my-bookings')
     },
     onError: (error) => useBookingStore.getState().setStatusMessage(error instanceof Error ? error.message : 'Booking could not be saved to the server.'),
+    onSettled: () => setIsSubmitting(false),
   })
 
   const getTodayDateStr = () => new Date().toISOString().slice(0, 10)
@@ -99,6 +101,7 @@ const BookingPage: React.FC = () => {
 
   // onSubmit only fires when Zod validation passes — invalid forms send NO request
   const onSubmit = (data: BookingFormData) => {
+    if (isSubmitting || bookingMutation.isPending) return
     const court = courts.find((c) => c.id === data.courtId)
     if (!court) return
     if (!court.isAvailable || isCourtBookedOnDate(bookings, court.id, data.bookingDate)) {
@@ -106,6 +109,7 @@ const BookingPage: React.FC = () => {
       return
     }
 
+    setIsSubmitting(true)
     const authUser = useAuthStore.getState().user
     const studentId = authUser?.id ? (typeof authUser.id === 'number' ? authUser.id : (Number(authUser.id) || 1)) : (user?.id ?? 1)
     
@@ -308,10 +312,10 @@ const BookingPage: React.FC = () => {
             {/* Submit Button */}
             <Button
               type="submit"
-              disabled={bookingMutation.isPending || !selectedCourtAvailable}
+              disabled={isSubmitting || bookingMutation.isPending || !selectedCourtAvailable}
               className="w-full rounded-xl bg-[#078A63] hover:bg-[#065f46] py-3.5 text-xs font-black uppercase tracking-wider text-white shadow-md transition-all hover:shadow-lg hover:-translate-y-0.5"
             >
-              {bookingMutation.isPending ? '⏳ Submitting Reservation...' : selectedCourtAvailable ? '🎟️ Confirm Reservation' : 'Court unavailable for this date'}
+              {isSubmitting || bookingMutation.isPending ? '⏳ Submitting Reservation...' : selectedCourtAvailable ? '🎟️ Confirm Reservation' : 'Court unavailable for this date'}
             </Button>
             {bookingMutation.isError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-700 dark:bg-rose-950/40 dark:text-rose-200">{bookingMutation.error instanceof Error ? bookingMutation.error.message : "The booking could not be saved."}</p>}
           </form>

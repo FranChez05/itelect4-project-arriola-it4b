@@ -95,17 +95,34 @@ const MyBookings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('all')
   const [expandedId, setExpandedId] = useState<number | null>(null)
 
-
-  const filteredBookings = bookings.filter((b) => {
-    switch (activeTab) {
-      case 'pending': return b.status === BookingStatus.Pending
-      case 'approved': return b.status === BookingStatus.Approved
-      case 'declined': return b.status === BookingStatus.Declined
-      case 'cancelled': return b.status === BookingStatus.Cancelled
-      case 'completed': return b.status === BookingStatus.Completed
-      default: return true
+  const isMatchStatus = (status: BookingStatus | string, tab: TabKey): boolean => {
+    const s = String(status || '').toLowerCase().trim()
+    switch (tab) {
+      case 'pending':
+        return s === 'pending'
+      case 'approved':
+        return s === 'approved' || s === 'accepted' || s === 'confirmed'
+      case 'declined':
+        return s === 'declined' || s === 'rejected'
+      case 'cancelled':
+        return s === 'cancelled' || s === 'canceled'
+      case 'completed':
+        return s === 'completed' || s === 'complete'
+      default:
+        return true
     }
-  })
+  }
+
+  // Sort bookings so newest/recent bookings are always at the top/front (unahan)
+  const sortedBookings = [...bookings]
+    .filter((b) => isMatchStatus(b.status, activeTab))
+    .sort((a, b) => {
+      const idA = Number(a.id) || 0
+      const idB = Number(b.id) || 0
+      if (idA !== idB) return idB - idA
+      return new Date(b.bookingDate).getTime() - new Date(a.bookingDate).getTime()
+    })
+
   const getCourtName = (courtId: number) => {
     const court = courts.find((c) => c.id === courtId)
     return court?.name ?? `Court #${courtId}`
@@ -116,67 +133,73 @@ const MyBookings: React.FC = () => {
     return court?.location ?? 'Unknown Location'
   }
 
-  const getStatusBadge = (status: BookingStatus) => {
-    switch (status) {
-      case BookingStatus.Approved:
-        return (
-          <span className="bg-[#EAF6EC] text-[#078A63] border border-[#078A63]/30 px-3 py-1 text-[10px] font-black uppercase rounded-full dark:bg-emerald-950 dark:text-emerald-300">
-            ✓ Confirmed
-          </span>
-        )
-      case BookingStatus.Pending:
-        return (
-          <span className="bg-amber-100 text-amber-800 border border-amber-300 px-3 py-1 text-[10px] font-black uppercase rounded-full dark:bg-amber-950 dark:text-amber-300">
-            ⏳ Pending
-          </span>
-        )
-      case BookingStatus.Declined:
-        return (
-          <span className="bg-rose-100 text-rose-800 border border-rose-300 px-3 py-1 text-[10px] font-black uppercase rounded-full dark:bg-rose-950 dark:text-rose-300">
-            ✕ Declined
-          </span>
-        )
-      case BookingStatus.Cancelled:
-        return (
-          <span className="bg-slate-200 text-slate-700 border border-slate-300 px-3 py-1 text-[10px] font-black uppercase rounded-full dark:bg-slate-700 dark:text-slate-300">
-            ⊘ Cancelled
-          </span>
-        )
-      case BookingStatus.Completed:
-        return (
-          <span className="bg-blue-100 text-blue-800 border border-blue-300 px-3 py-1 text-[10px] font-black uppercase rounded-full dark:bg-blue-950 dark:text-blue-300">
-            ★ Completed
-          </span>
-        )
-      default:
-        return null
+  const getStatusBadge = (rawStatus: BookingStatus | string) => {
+    const status = String(rawStatus || '').toLowerCase().trim()
+    if (status === 'approved' || status === 'accepted' || status === 'confirmed') {
+      return (
+        <span className="bg-[#EAF6EC] text-[#078A63] border border-[#078A63]/30 px-3 py-1 text-[10px] font-black uppercase rounded-full dark:bg-emerald-950 dark:text-emerald-300">
+          ✓ Accepted
+        </span>
+      )
     }
+    if (status === 'pending') {
+      return (
+        <span className="bg-amber-100 text-amber-800 border border-amber-300 px-3 py-1 text-[10px] font-black uppercase rounded-full dark:bg-amber-950 dark:text-amber-300">
+          ⏳ Pending
+        </span>
+      )
+    }
+    if (status === 'declined' || status === 'rejected') {
+      return (
+        <span className="bg-rose-100 text-rose-800 border border-rose-300 px-3 py-1 text-[10px] font-black uppercase rounded-full dark:bg-rose-950 dark:text-rose-300">
+          ✕ Declined
+        </span>
+      )
+    }
+    if (status === 'cancelled' || status === 'canceled') {
+      return (
+        <span className="bg-slate-200 text-slate-700 border border-slate-300 px-3 py-1 text-[10px] font-black uppercase rounded-full dark:bg-slate-700 dark:text-slate-300">
+          ⊘ Cancelled
+        </span>
+      )
+    }
+    if (status === 'completed' || status === 'complete') {
+      return (
+        <span className="bg-blue-100 text-blue-800 border border-blue-300 px-3 py-1 text-[10px] font-black uppercase rounded-full dark:bg-blue-950 dark:text-blue-300">
+          ★ Completed
+        </span>
+      )
+    }
+    return null
   }
 
-  const getStatusColor = (status: BookingStatus) => {
-    switch (status) {
-      case BookingStatus.Approved:
-        return 'border-l-[#078A63]'
-      case BookingStatus.Pending:
-        return 'border-l-amber-500'
-      case BookingStatus.Declined:
-        return 'border-l-rose-500'
-      case BookingStatus.Cancelled:
-        return 'border-l-slate-400'
-      case BookingStatus.Completed:
-        return 'border-l-[#0876D1]'
-      default:
-        return 'border-l-slate-300'
+  const getStatusColor = (rawStatus: BookingStatus | string) => {
+    const status = String(rawStatus || '').toLowerCase().trim()
+    if (status === 'approved' || status === 'accepted' || status === 'confirmed') {
+      return 'border-l-[#078A63]'
     }
+    if (status === 'pending') {
+      return 'border-l-amber-500'
+    }
+    if (status === 'declined' || status === 'rejected') {
+      return 'border-l-rose-500'
+    }
+    if (status === 'cancelled' || status === 'canceled') {
+      return 'border-l-slate-400'
+    }
+    if (status === 'completed' || status === 'complete') {
+      return 'border-l-[#0876D1]'
+    }
+    return 'border-l-slate-300'
   }
 
   const tabs: { key: TabKey; label: string; icon: string; count: number }[] = [
     { key: 'all', label: 'All', icon: '📋', count: bookings.length },
-    { key: 'pending', label: 'Pending', icon: '⏳', count: bookings.filter((b) => b.status === BookingStatus.Pending).length },
-    { key: 'approved', label: 'Accepted', icon: '✓', count: bookings.filter((b) => b.status === BookingStatus.Approved).length },
-    { key: 'declined', label: 'Declined', icon: '✕', count: bookings.filter((b) => b.status === BookingStatus.Declined).length },
-    { key: 'cancelled', label: 'Cancelled', icon: '⊘', count: bookings.filter((b) => b.status === BookingStatus.Cancelled).length },
-    { key: 'completed', label: 'Completed', icon: '✅', count: bookings.filter((b) => b.status === BookingStatus.Completed).length },
+    { key: 'pending', label: 'Pending', icon: '⏳', count: bookings.filter((b) => isMatchStatus(b.status, 'pending')).length },
+    { key: 'approved', label: 'Accepted', icon: '✓', count: bookings.filter((b) => isMatchStatus(b.status, 'approved')).length },
+    { key: 'declined', label: 'Declined', icon: '✕', count: bookings.filter((b) => isMatchStatus(b.status, 'declined')).length },
+    { key: 'cancelled', label: 'Cancelled', icon: '⊘', count: bookings.filter((b) => isMatchStatus(b.status, 'cancelled')).length },
+    { key: 'completed', label: 'Completed', icon: '✅', count: bookings.filter((b) => isMatchStatus(b.status, 'completed')).length },
   ]
   return (
     <div className="space-y-6">
@@ -235,11 +258,11 @@ const MyBookings: React.FC = () => {
       {/* ── BOOKINGS LIST ── */}
       {isLoading ? (
         <MyBookingsSkeletonCard />
-      ) : filteredBookings.length === 0 ? (
+      ) : sortedBookings.length === 0 ? (
         <MyBookingsEmptyState onAction={() => navigate('/booking')} />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {filteredBookings.map((b) => (
+          {sortedBookings.map((b) => (
             <div
               key={b.id}
               className={`rounded-2xl border-2 border-l-[6px] ${getStatusColor(

@@ -80,9 +80,12 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
 }
 
 export function parseBooking(apiBooking: any): Booking {
+  const numId = typeof apiBooking.id === 'number'
+    ? apiBooking.id
+    : (Number(apiBooking.id ?? apiBooking._id) || (Date.now() + Math.floor(Math.random() * 10000)))
   return {
     ...apiBooking,
-    id: typeof apiBooking.id === 'number' ? apiBooking.id : (Number(apiBooking.id ?? apiBooking._id) || Date.now()),
+    id: numId,
     userId: typeof apiBooking.userId === 'number' ? apiBooking.userId : (Number(apiBooking.userId) || 1),
     courtId: Number(apiBooking.courtId),
     bookingDate: new Date(apiBooking.bookingDate),
@@ -303,7 +306,31 @@ export function getLocalStoredBookings(): ApiBooking[] {
     const raw = window.localStorage.getItem('itelect4_local_bookings')
     if (raw) {
       const parsed = JSON.parse(raw) as ApiBooking[]
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Repair any duplicate IDs so each booking has a unique numeric ID
+        let hasDuplicates = false
+        const seenIds = new Set<string>()
+        const sanitized: ApiBooking[] = parsed.map((b, index) => {
+          let id = b.id
+          if (!id || seenIds.has(String(id))) {
+            hasDuplicates = true
+            id = (typeof id === 'number' && id > 0 ? id : Date.now()) + index + 1000
+            while (seenIds.has(String(id))) {
+              id = Number(id) + 1
+            }
+          }
+          seenIds.add(String(id))
+          return { ...b, id: Number(id) }
+        })
+        if (hasDuplicates) {
+          try {
+            window.localStorage.setItem('itelect4_local_bookings', JSON.stringify(sanitized))
+          } catch {
+            // ignore
+          }
+        }
+        return sanitized
+      }
     }
   } catch {
     // ignore
@@ -330,7 +357,7 @@ export function saveLocalStoredBookings(bookings: ApiBooking[]): void {
 export async function getBookings(): Promise<Booking[]> {
   const local = getLocalStoredBookings()
   try {
-    const serverBookings = await request<ApiBooking[]>('/bookings', { isPrivate: true })
+    const serverBookings = await request<ApiBooking[]>('/bookings', { isPrivate: true, timeoutMs: 2500 })
     if (Array.isArray(serverBookings) && serverBookings.length > 0) {
       const byId = new Map<string, ApiBooking>()
       serverBookings.forEach((b) => byId.set(String(b.id ?? (b as any)._id), b))
@@ -356,10 +383,10 @@ export async function getAdminBookings(): Promise<Booking[]> {
   
   // Try /admin/bookings first, then fallback to /bookings
   try {
-    serverBookings = await request<ApiBooking[]>('/admin/bookings', { isPrivate: true })
+    serverBookings = await request<ApiBooking[]>('/admin/bookings', { isPrivate: true, timeoutMs: 2000 })
   } catch {
     try {
-      serverBookings = await request<ApiBooking[]>('/bookings', { isPrivate: true })
+      serverBookings = await request<ApiBooking[]>('/bookings', { isPrivate: true, timeoutMs: 2000 })
     } catch {
       // both failed, use local
     }
@@ -399,20 +426,27 @@ export async function createBooking(input: CreateBookingInput): Promise<Booking>
     bookingDate: typeof input.bookingDate === 'string' ? input.bookingDate : input.bookingDate.toISOString(),
   }
 
+  const current = getLocalStoredBookings()
+  let uniqueId = Date.now() + Math.floor(Math.random() * 1000)
+  while (current.some((b) => String(b.id) === String(uniqueId))) {
+    uniqueId += 1
+  }
+
   let serverBooking: ApiBooking | null = null
   try {
     serverBooking = await request<ApiBooking>('/bookings', {
       method: 'POST',
       isPrivate: true,
+      timeoutMs: 2000,
       body: JSON.stringify(payload),
     })
   } catch (err) {
     console.warn('API POST /bookings failed, saving reservation in local storage:', err)
   }
 
-  const newId = serverBooking?.id ?? (serverBooking as any)?._id ?? Date.now()
+  const assignedId = serverBooking?.id && !isNaN(Number(serverBooking.id)) ? Number(serverBooking.id) : uniqueId
   const rawBooking: ApiBooking = {
-    id: typeof newId === 'number' ? newId : (Number(newId) || Date.now()),
+    id: assignedId,
     userId: typeof input.userId === 'number' ? input.userId : (Number(input.userId) || 1),
     courtId: Number(input.courtId),
     bookingDate: payload.bookingDate,
@@ -420,7 +454,7 @@ export async function createBooking(input: CreateBookingInput): Promise<Booking>
     status: (serverBooking?.status as BookingStatus) || (input.status as BookingStatus) || BookingStatus.Pending,
   }
 
-  const current = getLocalStoredBookings()
+  // Prepend to front so newest bookings are at the very top (unahan)
   const updatedList = [rawBooking, ...current.filter((b) => String(b.id) !== String(rawBooking.id))]
   saveLocalStoredBookings(updatedList)
 
@@ -431,20 +465,6 @@ export async function createBooking(input: CreateBookingInput): Promise<Booking>
 }
 
 export async function updateBookingStatus(id: number | string, status: BookingStatus): Promise<Booking> {
-  let serverBooking: ApiBooking | null = null
-  try {
-    const response = await request<ApiBooking>('/bookings/' + id, {
-      method: 'PATCH',
-      isPrivate: true,
-      body: JSON.stringify({ status }),
-    })
-    if (response) {
-      serverBooking = response
-    }
-  } catch (err) {
-    console.warn(`API PATCH /bookings/${id} failed, updating booking status locally:`, err)
-  }
-
   const current = getLocalStoredBookings()
   const existing = current.find((b) => String(b.id) === String(id))
   const updatedBooking: ApiBooking = {
@@ -456,16 +476,28 @@ export async function updateBookingStatus(id: number | string, status: BookingSt
       durationHours: 2,
     }),
     id: existing?.id ?? (typeof id === 'number' ? id : (Number(id) || Date.now())),
-    status: (serverBooking?.status as BookingStatus) || status,
+    status,
   }
 
+  // Only update the target booking
   const updatedList = current.map((b) => String(b.id) === String(id) ? updatedBooking : b)
   if (!existing) {
     updatedList.unshift(updatedBooking)
   }
 
+  // Save to local storage IMMEDIATELY for instant UI response
   saveLocalStoredBookings(updatedList)
   window.dispatchEvent(new CustomEvent('itelect4-bookings-updated', { detail: updatedBooking }))
+
+  // Perform server PATCH in background without blocking UI
+  request<ApiBooking>('/bookings/' + id, {
+    method: 'PATCH',
+    isPrivate: true,
+    timeoutMs: 2000,
+    body: JSON.stringify({ status }),
+  }).catch((err) => {
+    console.warn(`API PATCH /bookings/${id} failed, status preserved locally:`, err)
+  })
 
   return parseBooking(updatedBooking)
 }
